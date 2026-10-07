@@ -22,8 +22,8 @@ import (
 	"github.com/xtls/xray-core/features/extension"
 	"github.com/xtls/xray-core/features/stats"
 	"github.com/xtls/xray-core/infra/conf/serial"
-	"github.com/xtls/xray-core/transport/internet"
 	_ "github.com/xtls/xray-core/main/distro/all"
+	"github.com/xtls/xray-core/transport/internet"
 )
 
 var (

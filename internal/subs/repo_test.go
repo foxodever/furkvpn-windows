@@ -17,8 +17,10 @@ const body = `[{"remarks":"🇳🇱 Нидерланды","outbounds":[{"tag":"p
 
 func repo(t *testing.T, mirrors ...string) *Repo {
 	return Open(Options{
-		Dir:     t.TempDir(),
-		Do:      func(ctx context.Context, req *http.Request) (*http.Response, error) { return http.DefaultClient.Do(req) },
+		Dir: t.TempDir(),
+		Do: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+			return http.DefaultClient.Do(req)
+		},
 		Headers: func() http.Header { return http.Header{"X-Hwid": {"test"}} },
 		Allowed: func() []string { return []string{"127.0.0.1", "localhost"} },
 		Mirrors: func() []string { return mirrors },

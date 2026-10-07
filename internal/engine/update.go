@@ -21,7 +21,9 @@ import (
 
 // UpdatesDir is where downloaded installers wait: readable by the window, which starts them,
 // writable only by the service.
-func (e *Engine) UpdatesDir() string { return filepath.Join(filepath.Dir(e.opt.DataDir), "FurkVPN Updates") }
+func (e *Engine) UpdatesDir() string {
+	return filepath.Join(filepath.Dir(e.opt.DataDir), "FurkVPN Updates")
+}
 
 // updateAvailability shows the update card when furkapp.net offers a newer version that the user
 // hasn't skipped.

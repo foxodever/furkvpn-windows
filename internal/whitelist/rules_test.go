@@ -66,7 +66,7 @@ func TestWhiteListsOffMoveBackOnlyFromBypassOrOwnChoice(t *testing.T) {
 	check(Target(Whitelist, AllOK, lteAuto, servers, config, lteAuto.Key), wifiAuto.Key)
 	check(Target(Whitelist, AllOK, bypass, servers, config, ""), wifiAuto.Key)
 	check(Target(Unknown, AllOK, lteAuto, servers, config, lteAuto.Key), wifiAuto.Key)
-	check(Target(Whitelist, AllOK, nl, servers, config, ""), "<nil>")      // picked by hand
-	check(Target(Unknown, AllOK, lteAuto, servers, config, ""), "<nil>")   // picked by hand
-	check(Target(Unknown, AllOK, bypass, servers, config, ""), "<nil>")    // bypass on a normal network by choice
+	check(Target(Whitelist, AllOK, nl, servers, config, ""), "<nil>")    // picked by hand
+	check(Target(Unknown, AllOK, lteAuto, servers, config, ""), "<nil>") // picked by hand
+	check(Target(Unknown, AllOK, bypass, servers, config, ""), "<nil>")  // bypass on a normal network by choice
 }

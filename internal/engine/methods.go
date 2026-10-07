@@ -16,8 +16,13 @@ func (e *Engine) Connected(c *ipc.Conn) {
 	c.Send("state", e.fullState())
 }
 
-// Disconnected is called when a window goes away.
-func (e *Engine) Disconnected(c *ipc.Conn) {}
+// Disconnected is called when a window goes away: the auto-select window was its, and stays open
+// for nobody otherwise.
+func (e *Engine) Disconnected(c *ipc.Conn) {
+	if e.server != nil && e.server.Count() == 0 {
+		e.CloseAutoCheck()
+	}
+}
 
 func decode[T any](params json.RawMessage) (T, error) {
 	var v T

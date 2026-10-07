@@ -25,12 +25,12 @@ func TestPlainSubscriptionLink(t *testing.T) {
 
 func TestClientSuffixAndSlashAreRemoved(t *testing.T) {
 	cases := map[string]string{
-		"https://sub.furkvpn.com/abcDEF123456/json":           "https://sub.furkvpn.com/abcDEF123456",
-		"https://sub.furkvpn.com/abcDEF123456/":               "https://sub.furkvpn.com/abcDEF123456",
-		"http://furkconnection.net/abcDEF123456/v2ray-json":   "https://furkconnection.net/abcDEF123456",
-		"https://sub.furkvpn.com:8443/abcDEF123456":           "https://sub.furkvpn.com:8443/abcDEF123456",
-		"http://sub.furkvpn.com:443/abcDEF123456":             "https://sub.furkvpn.com/abcDEF123456",
-		"https://SUB.FurkVPN.com/abcDEF123456/JSON":           "https://sub.furkvpn.com/abcDEF123456",
+		"https://sub.furkvpn.com/abcDEF123456/json":         "https://sub.furkvpn.com/abcDEF123456",
+		"https://sub.furkvpn.com/abcDEF123456/":             "https://sub.furkvpn.com/abcDEF123456",
+		"http://furkconnection.net/abcDEF123456/v2ray-json": "https://furkconnection.net/abcDEF123456",
+		"https://sub.furkvpn.com:8443/abcDEF123456":         "https://sub.furkvpn.com:8443/abcDEF123456",
+		"http://sub.furkvpn.com:443/abcDEF123456":           "https://sub.furkvpn.com/abcDEF123456",
+		"https://SUB.FurkVPN.com/abcDEF123456/JSON":         "https://sub.furkvpn.com/abcDEF123456",
 	}
 	for in, want := range cases {
 		if got := ok(t, in).URL; got != want {
@@ -41,11 +41,11 @@ func TestClientSuffixAndSlashAreRemoved(t *testing.T) {
 
 func TestBotImportLinks(t *testing.T) {
 	cases := map[string]string{
-		"https://furkapp.net/import?url=https%3A%2F%2Fsub.furkvpn.com%2FabcDEF123456":   "https://sub.furkvpn.com/abcDEF123456",
-		"https://furkapp.net/import?url=https://sub.furkvpn.com/abcDEF123456":           "https://sub.furkvpn.com/abcDEF123456",
-		"furkvpn://import?url=https%3A%2F%2Ffurkconnection.net%2FabcDEF123456":          "https://furkconnection.net/abcDEF123456",
-		"furkvpn://add/https%3A%2F%2Fsub.furkvpn.com%2FabcDEF123456":                    "https://sub.furkvpn.com/abcDEF123456",
-		"\"furkvpn://import?url=https%3A%2F%2Ffurkconnection.net%2FabcDEF123456\"":      "https://furkconnection.net/abcDEF123456",
+		"https://furkapp.net/import?url=https%3A%2F%2Fsub.furkvpn.com%2FabcDEF123456": "https://sub.furkvpn.com/abcDEF123456",
+		"https://furkapp.net/import?url=https://sub.furkvpn.com/abcDEF123456":         "https://sub.furkvpn.com/abcDEF123456",
+		"furkvpn://import?url=https%3A%2F%2Ffurkconnection.net%2FabcDEF123456":        "https://furkconnection.net/abcDEF123456",
+		"furkvpn://add/https%3A%2F%2Fsub.furkvpn.com%2FabcDEF123456":                  "https://sub.furkvpn.com/abcDEF123456",
+		"\"furkvpn://import?url=https%3A%2F%2Ffurkconnection.net%2FabcDEF123456\"":    "https://furkconnection.net/abcDEF123456",
 	}
 	for in, want := range cases {
 		if got := ok(t, in).URL; got != want {
@@ -66,14 +66,14 @@ func TestLinkInsideMessageText(t *testing.T) {
 
 func TestForeignAndBrokenKeys(t *testing.T) {
 	cases := map[string]Status{
-		"https://sub.fgnconnection.com/abcDEF123456":        Foreign,
-		"https://furkvpn.com.evil.net/abcDEF123456":         Foreign,
-		"https://evilfurkconnection.net/abcDEF123456":       Foreign,
-		"vless://uuid@1.2.3.4:443?security=reality#x":       NotALink,
-		"просто текст":                                      NotALink,
-		"https://sub.furkvpn.com/":                          NotALink,
-		"https://furkapp.net/import":                        NotALink,
-		"   ":                                               Empty,
+		"https://sub.fgnconnection.com/abcDEF123456":  Foreign,
+		"https://furkvpn.com.evil.net/abcDEF123456":   Foreign,
+		"https://evilfurkconnection.net/abcDEF123456": Foreign,
+		"vless://uuid@1.2.3.4:443?security=reality#x": NotALink,
+		"просто текст":                                NotALink,
+		"https://sub.furkvpn.com/":                    NotALink,
+		"https://furkapp.net/import":                  NotALink,
+		"   ":                                         Empty,
 	}
 	for in, want := range cases {
 		if got := Parse(in, allowed).Status; got != want {

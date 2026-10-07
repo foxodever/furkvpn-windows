@@ -27,16 +27,16 @@ type App struct {
 	startHidden bool
 	servicePath string
 
-	mu       sync.Mutex
-	client   *ipc.Client
-	online   bool
-	ready    bool
-	queued   []func()
-	vpn      vpnSlice
-	names    map[string]string
+	mu     sync.Mutex
+	client *ipc.Client
+	online bool
+	ready  bool
+	queued []func()
+	vpn    vpnSlice
+	names  map[string]string
 	// Everything the service has said about its state, merged: a window that starts listening
 	// (or reloads) gets it at once.
-	state map[string]json.RawMessage
+	state    map[string]json.RawMessage
 	quitting bool
 	tray     *tray
 }

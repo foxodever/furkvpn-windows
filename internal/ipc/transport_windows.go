@@ -82,4 +82,3 @@ func checkServer(conn net.Conn, _ string) error {
 	}
 	return nil
 }
-

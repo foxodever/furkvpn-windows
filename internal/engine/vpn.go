@@ -21,13 +21,13 @@ import (
 )
 
 const (
-	networkSettle      = 3 * time.Second
-	autoCheckEvery     = 10 * time.Second
-	healthRestartMin   = 2 * time.Minute
-	longSleep          = 5 * time.Minute
-	autoBestMaxAge     = 10 * time.Minute
-	applyDebounce      = 1500 * time.Millisecond
-	connectLogLevel    = "error"
+	networkSettle    = 3 * time.Second
+	autoCheckEvery   = 10 * time.Second
+	healthRestartMin = 2 * time.Minute
+	longSleep        = 5 * time.Minute
+	autoBestMaxAge   = 10 * time.Minute
+	applyDebounce    = 1500 * time.Millisecond
+	connectLogLevel  = "error"
 )
 
 // session is the running VPN.

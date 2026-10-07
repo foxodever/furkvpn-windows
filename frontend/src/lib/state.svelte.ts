@@ -87,10 +87,14 @@ const messageTexts: Record<string, StringKey> = {
 };
 
 export function start() {
+  let first = true;
   onEvent("state", (data: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(data)) {
       (app as Record<string, unknown>)[key] = value ?? (key === "config" ? defaultConfig : null);
     }
+    // An auto-select window left open by a window that was closed or reloaded.
+    if (first && app.autoCheck) call("closeAutoCheck").catch(() => {});
+    first = false;
     app.online = true;
     app.loaded = true;
   });
@@ -98,12 +102,8 @@ export function start() {
     const key = messageTexts[m.code];
     if (key) snackbar(t(key, ...(m.args ?? [])));
   });
-  onEvent("service", (s: { online: boolean }) => {
-    app.online = s.online;
-    if (s.online) {
-      // The service's state comes right after it accepts the window.
-    }
-  });
+  // When the service comes back, its whole state follows right after it accepts the window.
+  onEvent("service", (s: { online: boolean }) => (app.online = s.online));
   onEvent("deeplink", (text: string) => submitKey(text));
   onEvent("file", (content: string) => inspectSettingsFile(content));
   system.autostart().then((on) => (ui.autostart = on)).catch(() => {});

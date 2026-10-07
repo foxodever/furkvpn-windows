@@ -16,17 +16,17 @@ func norm(t *testing.T, raw string) string {
 
 func TestWhatPeopleTypeBecomesARule(t *testing.T) {
 	cases := map[string]string{
-		"youtube.com":                    "domain:youtube.com",
-		"https://youtube.com/watch?v=1":  "domain:youtube.com",
-		"*.site.ru":                      "domain:.site.ru",
-		"site.ru:443":                    "domain:site.ru",
-		"кремль.рф":                      "domain:xn--e1ajeds9e.xn--p1ai",
-		"1.2.3.4":                        "1.2.3.4",
-		"10.0.0.0/8":                     "10.0.0.0/8",
-		"2001:DB8::/32":                  "2001:db8::/32",
-		"keyword:TikTok":                 "keyword:tiktok",
-		"full:api.example.com":           "full:api.example.com",
-		"YouTube.COM.":                   "domain:youtube.com",
+		"youtube.com":                   "domain:youtube.com",
+		"https://youtube.com/watch?v=1": "domain:youtube.com",
+		"*.site.ru":                     "domain:.site.ru",
+		"site.ru:443":                   "domain:site.ru",
+		"кремль.рф":                     "domain:xn--e1ajeds9e.xn--p1ai",
+		"1.2.3.4":                       "1.2.3.4",
+		"10.0.0.0/8":                    "10.0.0.0/8",
+		"2001:DB8::/32":                 "2001:db8::/32",
+		"keyword:TikTok":                "keyword:tiktok",
+		"full:api.example.com":          "full:api.example.com",
+		"YouTube.COM.":                  "domain:youtube.com",
 	}
 	for in, want := range cases {
 		if got := norm(t, in); got != want {

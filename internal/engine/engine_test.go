@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"furkvpn/internal/core"
+	"furkvpn/internal/ipc"
 	"furkvpn/internal/settings"
 )
 
@@ -49,12 +51,16 @@ func testServer(t *testing.T) *httptest.Server {
 	return s
 }
 
-func newEngine(t *testing.T, server *httptest.Server) (*Engine, context.CancelFunc) {
+// newEngine starts an engine against server; setup runs before the engine does.
+func newEngine(t *testing.T, server *httptest.Server, setup ...func(e *Engine)) (*Engine, context.CancelFunc) {
 	APIBase = server.URL
 	ctx, cancel := context.WithCancel(context.Background())
 	e := New(ctx, Options{DataDir: t.TempDir(), Log: log.New(io.Discard, "", 0), Resolver: nil, DevProxyOnly: true})
 	if err := e.refreshConfig(ctx); err != nil {
 		t.Fatal(err)
+	}
+	for _, f := range setup {
+		f(e)
 	}
 	done := make(chan struct{})
 	go func() { e.Run(); close(done) }()
@@ -159,5 +165,54 @@ func TestForeignKeysAreRefused(t *testing.T) {
 	}
 	if err := e.Connect(); err == nil && e.connected() {
 		t.Fatal("connected without a key")
+	}
+}
+
+// The auto-select window is refreshed for the windows: when the last one goes away (the app quit
+// with it open), the service stops.
+func TestAutoCheckClosesWithTheLastWindow(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var windows *ipc.Server
+	e, _ := newEngine(t, testServer(t), func(e *Engine) {
+		windows = ipc.NewServer(listener, e)
+		e.Attach(windows)
+	})
+	go windows.Serve(context.Background())
+	defer windows.Close()
+	dial := func() *ipc.Client {
+		nc, err := net.Dial("tcp", listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ipc.NewClient(nc, func(ipc.Event) {})
+	}
+	first, second := dial(), dial()
+	waitFor(t, "two windows", func() bool { return windows.Count() == 2 })
+
+	stopped := make(chan struct{})
+	e.mu.Lock()
+	e.autoCheck = &AutoCheck{Key: "auto", cancel: func() { close(stopped) }}
+	e.mu.Unlock()
+
+	_ = first.Close()
+	waitFor(t, "one window", func() bool { return windows.Count() == 1 })
+	select {
+	case <-stopped:
+		t.Fatal("closed while a window is still there")
+	case <-time.After(200 * time.Millisecond):
+	}
+	_ = second.Close()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("still refreshed with no window")
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.autoCheck != nil {
+		t.Fatal("the window is still open")
 	}
 }
