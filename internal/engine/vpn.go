@@ -14,7 +14,6 @@ import (
 
 	"furkvpn/internal/core"
 	"furkvpn/internal/ipc"
-	"furkvpn/internal/jsonx"
 	"furkvpn/internal/netx"
 	"furkvpn/internal/settings"
 	"furkvpn/internal/xrayconf"
@@ -50,11 +49,12 @@ type applied struct {
 	excluded []string
 	share    *settings.Share
 	routing  settings.Routing
+	tun      settings.Tun
 }
 
 func (a applied) equal(b applied) bool {
 	shareEqual := (a.share == nil) == (b.share == nil) && (a.share == nil || *a.share == *b.share)
-	return shareEqual && slices.Equal(a.excluded, b.excluded) && a.routing.Enabled == b.routing.Enabled &&
+	return shareEqual && a.tun == b.tun && slices.Equal(a.excluded, b.excluded) && a.routing.Enabled == b.routing.Enabled &&
 		a.routing.LANDirect == b.routing.LANDirect && a.routing.RUDirect == b.routing.RUDirect &&
 		slices.Equal(a.routing.Direct, b.routing.Direct) && slices.Equal(a.routing.Proxy, b.routing.Proxy) &&
 		slices.Equal(a.routing.Block, b.routing.Block)
@@ -82,7 +82,23 @@ func (e *Engine) wanted() applied {
 	}
 	excluded := settings.ExclusionsOf(s, e.cfg().Windows.DefaultExcludedApps).Effective()
 	slices.Sort(excluded)
-	return applied{excluded: excluded, share: share, routing: s.Routing}
+	return applied{excluded: excluded, share: share, routing: s.Routing, tun: e.coreTun(s.Tun)}
+}
+
+// coreTun is what of Settings → Расширенные настройки the core is built with: the adapter's
+// parameters with the adapter, the proxy's port without it. The system proxy is the window's.
+func (e *Engine) coreTun(t settings.Tun) settings.Tun {
+	if e.opt.DevProxyOnly {
+		// Elsewhere than on Windows the TUN would take over the whole machine's routes.
+		t.Enabled = false
+	}
+	t.SystemProxy = false
+	if t.Enabled {
+		t.ProxyPort = 0
+	} else {
+		t.MTU, t.IPv6, t.StrictDNS = 0, false, false
+	}
+	return t
 }
 
 // Connect starts the VPN with the selected server.
@@ -147,9 +163,20 @@ func (e *Engine) startLocked(reconnect bool) error {
 		_ = core.Stop()
 	}
 
+	var tun *xrayconf.Tun
+	localPort := 0
+	if want.tun.Enabled {
+		tun = &xrayconf.Tun{MTU: want.tun.MTU, IPv6: want.tun.IPv6, StrictDNS: want.tun.StrictDNS}
+	} else {
+		port, ok := freePort(want.tun.ProxyPort)
+		if !ok {
+			return fail(ipc.Errorf("port_busy", "ports "+strconv.Itoa(want.tun.ProxyPort)+"+ are busy"))
+		}
+		localPort = port
+	}
 	var share *xrayconf.ShareProxy
 	if want.share != nil {
-		share = sharePorts(*want.share)
+		share = sharePorts(*want.share, localPort)
 	}
 	fallback := ""
 	e.mu.Lock()
@@ -159,18 +186,17 @@ func (e *Engine) startLocked(reconnect bool) error {
 	e.mu.Unlock()
 	r := want.routing
 	config, err := xrayconf.Build(raw, xrayconf.Options{
-		LogLevel: connectLogLevel,
-		Share:    share,
-		Routing:  &xrayconf.Routing{Enabled: r.Enabled, LANDirect: r.LANDirect, RUDirect: r.RUDirect, Direct: r.Direct, Proxy: r.Proxy, Block: r.Block},
-		Excluded: want.excluded,
-		Fallback: fallback,
-		ErrorLog: e.xrayLog(),
+		LogLevel:  connectLogLevel,
+		Tun:       tun,
+		LocalPort: localPort,
+		Share:     share,
+		Routing:   &xrayconf.Routing{Enabled: r.Enabled, LANDirect: r.LANDirect, RUDirect: r.RUDirect, Direct: r.Direct, Proxy: r.Proxy, Block: r.Block},
+		Excluded:  want.excluded,
+		Fallback:  fallback,
+		ErrorLog:  e.xrayLog(),
 	})
 	if err != nil {
 		return fail(ipc.Errorf("bad_config", err.Error()))
-	}
-	if e.opt.DevProxyOnly {
-		config = devProxyOnly(config)
 	}
 	if !reconnect {
 		e.connlog.Clear()
@@ -201,7 +227,7 @@ func (e *Engine) startLocked(reconnect bool) error {
 	if since == 0 || !reconnect {
 		since = time.Now().UnixMilli()
 	}
-	e.vpn = vpnView{Status: StatusConnected, Since: since, ServerKey: server.Key}
+	e.vpn = vpnView{Status: StatusConnected, Since: since, ServerKey: server.Key, LocalPort: localPort}
 	if share != nil {
 		e.vpn.Share = &shareView{HTTPPort: share.HTTPPort, SocksPort: share.SocksPort, Auth: share.User != ""}
 	}
@@ -216,7 +242,11 @@ func (e *Engine) startLocked(reconnect bool) error {
 	}
 	go e.statsLoop(ctx, run)
 	go e.watchdog(ctx, run)
-	e.log.Printf("VPN on: %s", server.DisplayName())
+	if tun != nil {
+		e.log.Printf("VPN on: %s", server.DisplayName())
+	} else {
+		e.log.Printf("VPN on: %s, proxy on 127.0.0.1:%d", server.DisplayName(), localPort)
+	}
 	return nil
 }
 
@@ -281,12 +311,12 @@ func errText(err error) string {
 }
 
 // sharePorts are the ports from the settings (8080 and 1080 by default), or the next free ones.
-func sharePorts(s settings.Share) *xrayconf.ShareProxy {
-	httpPort, ok := freePort(s.HTTPPort, -1)
+func sharePorts(s settings.Share, taken int) *xrayconf.ShareProxy {
+	httpPort, ok := freePort(s.HTTPPort, taken)
 	if !ok {
 		return nil
 	}
-	socksPort, ok := freePort(s.SocksPort, httpPort)
+	socksPort, ok := freePort(s.SocksPort, taken, httpPort)
 	if !ok {
 		return nil
 	}
@@ -297,9 +327,10 @@ func sharePorts(s settings.Share) *xrayconf.ShareProxy {
 	return p
 }
 
-func freePort(preferred, exclude int) (int, bool) {
+// freePort is the preferred port or one of the next ones that nothing listens on.
+func freePort(preferred int, taken ...int) (int, bool) {
 	for port := preferred; port < min(preferred+20, settings.MaxPort+1); port++ {
-		if port == exclude {
+		if slices.Contains(taken, port) {
 			continue
 		}
 		l, err := net.Listen("tcp", "0.0.0.0:"+strconv.Itoa(port))
@@ -310,28 +341,6 @@ func freePort(preferred, exclude int) (int, bool) {
 		return port, true
 	}
 	return 0, false
-}
-
-// devProxyOnly replaces the TUN with a local SOCKS proxy, for development on other systems: there
-// the TUN would take over the whole machine's routes.
-func devProxyOnly(config []byte) []byte {
-	obj, err := jsonx.ParseObject(config)
-	if err != nil {
-		return config
-	}
-	for _, in := range jsonx.Objects(obj["inbounds"]) {
-		if jsonx.S(in, "tag") == xrayconf.TunTag {
-			in["protocol"] = "socks"
-			in["listen"] = "127.0.0.1"
-			in["port"] = 10808
-			in["settings"] = jsonx.Object{"auth": "noauth", "udp": true}
-		}
-	}
-	out, err := jsonx.Marshal(obj)
-	if err != nil {
-		return config
-	}
-	return out
 }
 
 // --- watching the running VPN --------------------------------------------------------------

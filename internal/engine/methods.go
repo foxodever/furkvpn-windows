@@ -125,6 +125,9 @@ func (e *Engine) Handle(ctx context.Context, c *ipc.Conn, method string, params 
 		}
 		_, err = e.settings.Update(func(s *settings.Settings) { s.Share.HTTPPort, s.Share.SocksPort = p.HTTP, p.Socks })
 		return nil, err
+	case "resetTun":
+		_, err := e.settings.Update(func(s *settings.Settings) { s.Tun = settings.DefaultTun() })
+		return nil, err
 	case "resetShareCredentials":
 		_, err := e.settings.Update(func(s *settings.Settings) {
 			s.Share.User, s.Share.Password = settings.NewShareUser(), settings.NewSharePassword()
@@ -290,7 +293,8 @@ func (e *Engine) set(params json.RawMessage) error {
 	var change func(s *settings.Settings)
 	switch p.Key {
 	case "whitelistDetect", "connectionLog", "shareEnabled", "shareAuth", "serversOnLeft", "autoConnect",
-		"routingEnabled", "routingLanDirect", "routingRuDirect", "useRecommendedExclusions":
+		"routingEnabled", "routingLanDirect", "routingRuDirect", "useRecommendedExclusions",
+		"tunEnabled", "tunIpv6", "tunStrictDns", "systemProxy":
 		if err := asBool(); err != nil {
 			return ipc.Errorf("bad_request", err.Error())
 		}
@@ -319,8 +323,26 @@ func (e *Engine) set(params json.RawMessage) error {
 				s.Routing.RUDirect = b
 			case "useRecommendedExclusions":
 				s.UseRecommendedExclusions = b
+			case "tunEnabled":
+				s.Tun.Enabled = b
+			case "tunIpv6":
+				s.Tun.IPv6 = b
+			case "tunStrictDns":
+				s.Tun.StrictDNS = b
+			case "systemProxy":
+				s.Tun.SystemProxy = b
 			}
 		}
+	case "tunMtu":
+		if err := asInt(); err != nil || n < settings.MinMTU || n > settings.MaxMTU {
+			return ipc.Errorf("bad_request", "mtu")
+		}
+		change = func(s *settings.Settings) { s.Tun.MTU = n }
+	case "proxyPort":
+		if err := asInt(); err != nil || n < settings.MinPort || n > settings.MaxPort {
+			return ipc.Errorf("bad_request", "port")
+		}
+		change = func(s *settings.Settings) { s.Tun.ProxyPort = n }
 	case "subscriptionUpdateHours":
 		if err := asInt(); err != nil || n < settings.UpdateManual || n > 24 {
 			return ipc.Errorf("bad_request", "hours")

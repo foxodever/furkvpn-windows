@@ -6,6 +6,7 @@
   import Apps from "./screens/Apps.svelte";
   import Share from "./screens/Share.svelte";
   import ConnectionLog from "./screens/ConnectionLog.svelte";
+  import Advanced from "./screens/Advanced.svelte";
   import Dialog from "./components/Dialog.svelte";
   import Spinner from "./components/Spinner.svelte";
   import Icon from "./components/Icon.svelte";
@@ -97,6 +98,8 @@
     <Share />
   {:else if current === "connlog"}
     <ConnectionLog />
+  {:else if current === "advanced"}
+    <Advanced />
   {/if}
 
   {#if app.loaded && !app.online}

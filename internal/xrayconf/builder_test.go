@@ -16,6 +16,9 @@ const raw = `
  "api":{"tag":"api","listen":"0.0.0.0:10085","services":["HandlerService"]},
  "observatory":{"subjectSelector":["proxy"]}}`
 
+// tun is the adapter as it is by default.
+var tun = &Tun{MTU: MTU, IPv6: true, StrictDNS: true}
+
 func build(t *testing.T, config string, opt Options) jsonx.Object {
 	t.Helper()
 	out, err := Build([]byte(config), opt)
@@ -42,7 +45,7 @@ func tags(list []jsonx.Object) []string {
 }
 
 func TestTunInboundDNSHijackAndNoAccessLog(t *testing.T) {
-	cfg := build(t, raw, Options{LogLevel: "error"})
+	cfg := build(t, raw, Options{LogLevel: "error", Tun: tun})
 	inbounds := jsonx.Objects(cfg["inbounds"])
 	if !reflect.DeepEqual(tags(inbounds), []string{"tun-in"}) {
 		t.Fatalf("inbounds %v", tags(inbounds))
@@ -78,7 +81,7 @@ func TestTunInboundDNSHijackAndNoAccessLog(t *testing.T) {
 }
 
 func TestShareProxyServesOnlyLocalNetwork(t *testing.T) {
-	cfg := build(t, raw, Options{Share: &ShareProxy{HTTPPort: 8080, SocksPort: 1080}})
+	cfg := build(t, raw, Options{Tun: tun, Share: &ShareProxy{HTTPPort: 8080, SocksPort: 1080}})
 	inbounds := jsonx.Objects(cfg["inbounds"])
 	if !reflect.DeepEqual(tags(inbounds), []string{"tun-in", "share-http", "share-socks"}) {
 		t.Fatalf("%v", tags(inbounds))
@@ -141,7 +144,7 @@ func TestUserRulesGoBeforeServerRulesAndUseTheBalancer(t *testing.T) {
 		t.Fatalf("%v", directDomains)
 	}
 
-	cfg := build(t, auto, Options{Routing: &Routing{
+	cfg := build(t, auto, Options{Tun: tun, Routing: &Routing{
 		Enabled: true, LANDirect: true,
 		Direct: []string{"domain:sber.ru"}, Proxy: []string{"domain:yandex.ru"}, Block: []string{"domain:ads.example", "1.2.3.4"},
 	}})
@@ -162,7 +165,7 @@ func TestUserRulesGoBeforeServerRulesAndUseTheBalancer(t *testing.T) {
 		t.Fatal("then the panel's rules")
 	}
 	// Turned off: none of the user's rules.
-	off := build(t, auto, Options{Routing: &Routing{Enabled: false, Block: []string{"1.2.3.4"}}})
+	off := build(t, auto, Options{Tun: tun, Routing: &Routing{Enabled: false, Block: []string{"1.2.3.4"}}})
 	if len(rules(off)) != 3 {
 		t.Fatalf("%v", rules(off))
 	}
@@ -170,6 +173,7 @@ func TestUserRulesGoBeforeServerRulesAndUseTheBalancer(t *testing.T) {
 
 func TestExcludedProgramsGoAroundEverything(t *testing.T) {
 	cfg := build(t, raw, Options{
+		Tun:      tun,
 		Excluded: []string{"Telegram.exe", "C:\\Games\\steam.EXE"},
 		Routing:  &Routing{Enabled: true, Block: []string{"domain:telegram.org"}},
 	})
@@ -239,9 +243,60 @@ func TestDNSGoesOverTCPSoEachQueryPicksALiveServer(t *testing.T) {
 }
 
 func TestOutboundProtocols(t *testing.T) {
-	out, _ := Build([]byte(raw), Options{})
+	out, _ := Build([]byte(raw), Options{Tun: tun})
 	got := OutboundProtocols(out)
 	if got["proxy"] != "vless" || got["direct"] != "freedom" || got["dns-out"] != "dns" {
 		t.Fatalf("%v", got)
+	}
+}
+
+func TestTunSettings(t *testing.T) {
+	settings := func(opt Tun) jsonx.Object {
+		return jsonx.Obj(jsonx.Objects(build(t, raw, Options{Tun: &opt})["inbounds"])[0]["settings"])
+	}
+	// Without IPv6: no IPv6 address or route, and IPv6 blocked past the TUN instead of leaking.
+	v4 := settings(Tun{MTU: 1400, IPv6: false, StrictDNS: true})
+	if jsonx.S(v4, "mtu") != "1400" ||
+		!reflect.DeepEqual(jsonx.Strings(v4["gateway"]), []string{TunAddress4}) ||
+		!reflect.DeepEqual(jsonx.Strings(v4["autoSystemRoutingTable"]), []string{"0.0.0.0/0"}) ||
+		!reflect.DeepEqual(jsonx.Strings(v4["autoSystemWfpBlockLeak"]), []string{"dns", "misconfigtun"}) {
+		t.Fatalf("%v", v4)
+	}
+	// DNS let through other networks: no filters at all.
+	loose := settings(Tun{IPv6: true})
+	if _, ok := loose["autoSystemWfpBlockLeak"]; ok || jsonx.S(loose, "mtu") != "1500" {
+		t.Fatalf("%v", loose)
+	}
+	if !reflect.DeepEqual(jsonx.Strings(loose["dns"]), []string{TunDNS}) {
+		t.Fatal("the adapter keeps its DNS server")
+	}
+}
+
+func TestWithoutTunProgramsUseALocalProxy(t *testing.T) {
+	cfg := build(t, raw, Options{LocalPort: 10808, Excluded: []string{"Telegram.exe"}, Share: &ShareProxy{HTTPPort: 8080, SocksPort: 1080}})
+	inbounds := jsonx.Objects(cfg["inbounds"])
+	if !reflect.DeepEqual(tags(inbounds), []string{"local-in", "share-http", "share-socks"}) {
+		t.Fatalf("%v", tags(inbounds))
+	}
+	local := inbounds[0]
+	if jsonx.S(local, "protocol") != "socks" || jsonx.S(local, "listen") != "127.0.0.1" || jsonx.S(local, "port") != "10808" {
+		t.Fatalf("%v", local)
+	}
+	if jsonx.S(jsonx.Obj(local["settings"]), "auth") != "noauth" || jsonx.Obj(local["sniffing"])["enabled"] != true {
+		t.Fatalf("%v", local)
+	}
+	for _, r := range rules(cfg) {
+		if jsonx.S(r, "port") == "53" {
+			t.Fatal("no DNS from a TUN to answer")
+		}
+		if r["process"] != nil && !reflect.DeepEqual(jsonx.Strings(r["inboundTag"]), []string{"local-in"}) {
+			t.Fatalf("programs without VPN through the proxy: %v", r)
+		}
+	}
+	if slices.Contains(tags(jsonx.Objects(cfg["outbounds"])), "dns-out") {
+		t.Fatal("no dns outbound needed")
+	}
+	if !slices.Contains(Counters("uplink"), "inbound>>>local-in>>>traffic>>>uplink") {
+		t.Fatal("the proxy's traffic is counted")
 	}
 }

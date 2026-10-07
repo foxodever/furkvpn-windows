@@ -216,3 +216,54 @@ func TestAutoCheckClosesWithTheLastWindow(t *testing.T) {
 		t.Fatal("the window is still open")
 	}
 }
+
+// Without the TUN (always so off Windows) the VPN is a proxy on 127.0.0.1: its port follows the
+// settings, and what doesn't change the core (the window's system proxy, the adapter's MTU) leaves
+// the tunnel alone.
+func TestProxyModeFollowsItsSettings(t *testing.T) {
+	server := testServer(t)
+	e, _ := newEngine(t, server)
+	if _, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	defer e.Disconnect()
+	e.vpnLock.Lock()
+	first := e.run
+	e.vpnLock.Unlock()
+	e.mu.Lock()
+	port := e.vpn.LocalPort
+	e.mu.Unlock()
+	if port < settings.DefaultProxyPort || port >= settings.DefaultProxyPort+20 {
+		t.Fatalf("local port %d", port)
+	}
+
+	_, _ = e.settings.Update(func(s *settings.Settings) { s.Tun.SystemProxy = false; s.Tun.MTU = 1400 })
+	time.Sleep(applyDebounce + 500*time.Millisecond)
+	e.vpnLock.Lock()
+	same := e.run == first
+	e.vpnLock.Unlock()
+	if !same {
+		t.Fatal("rebuilt for nothing")
+	}
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	free := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	_, _ = e.settings.Update(func(s *settings.Settings) { s.Tun.ProxyPort = free })
+	waitFor(t, "the new port", func() bool {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.vpn.LocalPort == free
+	})
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", free))
+	if err != nil {
+		t.Fatalf("the proxy doesn't listen: %v", err)
+	}
+	_ = conn.Close()
+}

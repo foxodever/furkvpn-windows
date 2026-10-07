@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"golang.org/x/net/idna"
+
+	"furkvpn/internal/transfer"
 )
 
 // Config is the "app" block of /opt/furkapp/config/config.json on furkapp.net.
@@ -158,7 +160,7 @@ func Sanitize(c Config) Config {
 	c.Links = links
 	c.Site = c.Site.Sanitized()
 	c.DefaultExcludedApps = trimmed(c.DefaultExcludedApps)
-	c.Windows.DefaultExcludedApps = trimmed(c.Windows.DefaultExcludedApps)
+	c.Windows.DefaultExcludedApps = programNames(c.Windows.DefaultExcludedApps)
 	filters := c.ServerFilters[:0:0]
 	for _, f := range c.ServerFilters {
 		if strings.TrimSpace(f.Emoji) != "" {
@@ -182,6 +184,17 @@ func Sanitize(c Config) Config {
 		c.Windows.Update = nil
 	}
 	return c
+}
+
+// programNames takes "chrome", "Chrome.exe" or a whole path as the program's file name.
+func programNames(list []string) []string {
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		if name, ok := transfer.ProgramName(s); ok {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func trimmed(list []string) []string {

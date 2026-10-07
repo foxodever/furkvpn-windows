@@ -28,6 +28,33 @@ const (
 	MaxPort          = 65535
 )
 
+const (
+	DefaultMTU       = 1500
+	MinMTU           = 1280 // the least IPv6 allows
+	MaxMTU           = 9000
+	DefaultProxyPort = 10808
+)
+
+// Tun is Settings → Расширенные настройки: how the computer's traffic gets into the VPN.
+type Tun struct {
+	// The VPN adapter takes all of the computer's traffic. Without it the VPN is a proxy on
+	// 127.0.0.1 for the programs set up to use it: through Windows' proxy settings or their own.
+	Enabled bool `json:"enabled"`
+	MTU     int  `json:"mtu"`
+	// IPv6 goes into the adapter too; otherwise it is blocked past it, and programs use IPv4.
+	IPv6 bool `json:"ipv6"`
+	// DNS only through the adapter: Windows asks the DNS servers of every network it is on.
+	StrictDNS bool `json:"strictDns"`
+	// Without the adapter: the proxy's port, and whether the app points Windows' proxy at it.
+	ProxyPort   int  `json:"proxyPort"`
+	SystemProxy bool `json:"systemProxy"`
+}
+
+// DefaultTun is the adapter as it was before these settings existed.
+func DefaultTun() Tun {
+	return Tun{Enabled: true, MTU: DefaultMTU, IPv6: true, StrictDNS: true, ProxyPort: DefaultProxyPort, SystemProxy: true}
+}
+
 // Share is "Раздача интернета": an HTTP and a SOCKS5 proxy for other devices on the network.
 type Share struct {
 	Enabled   bool   `json:"enabled"`
@@ -98,6 +125,7 @@ type Settings struct {
 	WasConnected bool `json:"wasConnected"`
 	// Stable per-device id sent as x-hwid, so the panel's device limit works when it is enabled.
 	DeviceID string `json:"deviceId,omitempty"`
+	Tun      Tun    `json:"tun"`
 }
 
 // Defaults of a fresh install.
@@ -110,6 +138,7 @@ func Defaults() Settings {
 		SubscriptionUpdateHours:  UpdateFromSubscription,
 		Routing:                  Routing{Enabled: true, LANDirect: true, Direct: []string{}, Proxy: []string{}, Block: []string{}},
 		WhitelistDetect:          true,
+		Tun:                      DefaultTun(),
 	}
 }
 
@@ -220,6 +249,12 @@ func clean(s Settings) Settings {
 	}
 	if s.SubscriptionUpdateHours < UpdateManual || s.SubscriptionUpdateHours > 48 {
 		s.SubscriptionUpdateHours = UpdateFromSubscription
+	}
+	if s.Tun.MTU < MinMTU || s.Tun.MTU > MaxMTU {
+		s.Tun.MTU = DefaultMTU
+	}
+	if s.Tun.ProxyPort < MinPort || s.Tun.ProxyPort > MaxPort {
+		s.Tun.ProxyPort = DefaultProxyPort
 	}
 	return s
 }

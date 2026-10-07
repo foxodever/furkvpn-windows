@@ -13,6 +13,7 @@ const names = [
   "computer", "bolt", "autorenew", "warning", "wifi", "settings_ethernet", "signal_cellular_alt", "router",
   "history", "minimize", "delete", "edit", "upload_file", "download", "hub", "error", "deployed_code",
   "keyboard", "dns", "remove", "drag_indicator", "open_in_new", "palette", "restart_alt", "lan",
+  "tune", "vpn_lock", "straighten", "looks_6", "travel_explore",
 ];
 const base = "node_modules/@material-symbols/svg-400/rounded/";
 const out = {};

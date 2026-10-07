@@ -30,6 +30,8 @@ type vpnView struct {
 	ServerKey string `json:"serverKey,omitempty"`
 	// The share proxy while it runs.
 	Share *shareView `json:"share,omitempty"`
+	// Without the TUN: the port of the proxy on 127.0.0.1 that programs use.
+	LocalPort int `json:"localPort,omitempty"`
 }
 
 type shareView struct {
@@ -128,6 +130,7 @@ type settingsView struct {
 	SkippedUpdate           int            `json:"skippedUpdate"`
 	AutoConnect             bool           `json:"autoConnect"`
 	Share                   settings.Share `json:"share"`
+	Tun                     settings.Tun   `json:"tun"`
 }
 
 // sliceNames are the parts of the state; each is sent to the windows only when it changes.
@@ -176,6 +179,7 @@ func (e *Engine) slice(name string) any {
 			SkippedUpdate:           s.SkippedUpdate,
 			AutoConnect:             s.AutoConnect,
 			Share:                   s.Share,
+			Tun:                     s.Tun,
 		}
 	case "exclusions":
 		x := settings.ExclusionsOf(e.settings.Get(), e.cfg().Windows.DefaultExcludedApps)

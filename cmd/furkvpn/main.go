@@ -3,7 +3,8 @@
 // FurkVPN.exe is the app's window and tray icon, run by the user. Everything that needs
 // administrator rights (the VPN itself) happens in FurkVPNService.exe, which it talks to over a
 // named pipe. "--tray" starts it hidden (at sign-in); a furkvpn:// link or a settings file in the
-// arguments is passed to the running copy.
+// arguments is passed to the running copy; "--restore-proxy" (for the installer) only puts back
+// the system proxy the app has set, see sysproxy.go.
 package main
 
 import (
@@ -11,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -22,6 +24,10 @@ import (
 )
 
 func main() {
+	if slices.Contains(os.Args[1:], "--restore-proxy") {
+		restoreProxyAndExit()
+		return
+	}
 	app := newApp(os.Args[1:])
 	dist, err := fs.Sub(frontend.Dist, "dist")
 	if err != nil {

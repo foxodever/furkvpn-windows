@@ -7,6 +7,8 @@ export interface VpnView {
   since?: number;
   serverKey?: string;
   share?: { httpPort: number; socksPort: number; auth: boolean };
+  /** Without TUN: the port of the proxy on 127.0.0.1. */
+  localPort?: number;
 }
 
 export interface Traffic {
@@ -109,6 +111,16 @@ export interface ShareSettings {
   password: string;
 }
 
+/** Settings → Расширенные настройки. */
+export interface TunSettings {
+  enabled: boolean;
+  mtu: number;
+  ipv6: boolean;
+  strictDns: boolean;
+  proxyPort: number;
+  systemProxy: boolean;
+}
+
 export interface SettingsView {
   selectedServer: string;
   serversOnLeft: boolean;
@@ -118,6 +130,7 @@ export interface SettingsView {
   skippedUpdate: number;
   autoConnect: boolean;
   share: ShareSettings;
+  tun: TunSettings;
 }
 
 export interface Exclusions {

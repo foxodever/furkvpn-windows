@@ -23,9 +23,11 @@ import (
 type App struct {
 	ctx         context.Context
 	lang        string
+	uiMu        sync.Mutex
 	ui          uiConfig
 	startHidden bool
 	servicePath string
+	proxyMu     sync.Mutex
 
 	mu     sync.Mutex
 	client *ipc.Client
@@ -34,6 +36,8 @@ type App struct {
 	queued []func()
 	vpn    vpnSlice
 	names  map[string]string
+	// Settings → Расширенные настройки → "Системный прокси".
+	systemProxy bool
 	// Everything the service has said about its state, merged: a window that starts listening
 	// (or reloads) gets it at once.
 	state    map[string]json.RawMessage
@@ -44,6 +48,7 @@ type App struct {
 type vpnSlice struct {
 	Status    string `json:"status"`
 	ServerKey string `json:"serverKey"`
+	LocalPort int    `json:"localPort"`
 }
 
 func newApp(args []string) *App {
@@ -68,6 +73,9 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logf("started %v", os.Args[1:])
 	a.firstRun()
+	// A system proxy left by an app that didn't get to put it back (a crash, a power cut) goes
+	// unless the VPN turns out to be on.
+	a.syncSystemProxy()
 	go a.serviceLoop()
 	a.tray = startTray(a)
 }
@@ -85,9 +93,8 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	}
 	a.saveWindowSize()
 	runtime.WindowHide(ctx)
-	if !a.ui.TrayHintShown {
-		a.ui.TrayHintShown = true
-		a.ui.save()
+	if !a.uiConfig().TrayHintShown {
+		a.updateUI(func(c *uiConfig) { c.TrayHintShown = true })
 		if a.tray != nil {
 			a.tray.balloon("FurkVPN", a.text("tray_hint"))
 		}
@@ -96,6 +103,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.restoreProxy()
 	if a.tray != nil {
 		a.tray.close()
 	}
@@ -110,8 +118,7 @@ func (a *App) saveWindowSize() {
 	}
 	w, h := runtime.WindowGetSize(a.ctx)
 	if w >= 400 && h >= 560 {
-		a.ui.Width, a.ui.Height = w, h
-		a.ui.save()
+		a.updateUI(func(c *uiConfig) { c.Width, c.Height = w, h })
 	}
 }
 
@@ -137,6 +144,7 @@ func (a *App) quit() {
 		_ = client.Call(ctx, "disconnect", nil, nil)
 		cancel()
 	}
+	a.restoreProxy()
 	runtime.Quit(a.ctx)
 }
 
@@ -244,9 +252,13 @@ func (a *App) setOnline(client *ipc.Client) {
 	a.online = client != nil
 	if client == nil {
 		a.state = map[string]json.RawMessage{}
+		a.vpn = vpnSlice{}
 	}
 	ready := a.ready
 	a.mu.Unlock()
+	if changed {
+		a.syncSystemProxy()
+	}
 	if changed && ready && a.ctx != nil {
 		runtime.EventsEmit(a.ctx, "service", map[string]bool{"online": client != nil})
 	}
@@ -275,10 +287,16 @@ func (a *App) onEvent(e ipc.Event) {
 	}
 }
 
-// watchState keeps what the tray shows: the VPN's state and the server's name.
+// watchState keeps what the tray shows (the VPN's state and the server's name) and what the
+// system proxy depends on.
 func (a *App) watchState(data json.RawMessage) {
 	var parts struct {
-		VPN          *vpnSlice `json:"vpn"`
+		VPN      *vpnSlice `json:"vpn"`
+		Settings *struct {
+			Tun struct {
+				SystemProxy bool `json:"systemProxy"`
+			} `json:"tun"`
+		} `json:"settings"`
 		Subscription *struct {
 			Info *struct {
 				Servers []struct {
@@ -295,6 +313,9 @@ func (a *App) watchState(data json.RawMessage) {
 	if parts.VPN != nil {
 		a.vpn = *parts.VPN
 	}
+	if parts.Settings != nil {
+		a.systemProxy = parts.Settings.Tun.SystemProxy
+	}
 	if parts.Subscription != nil && parts.Subscription.Info != nil {
 		a.names = map[string]string{}
 		for _, s := range parts.Subscription.Info.Servers {
@@ -304,6 +325,9 @@ func (a *App) watchState(data json.RawMessage) {
 	a.mu.Unlock()
 	if a.tray != nil && (parts.VPN != nil || parts.Subscription != nil) {
 		a.tray.update()
+	}
+	if parts.VPN != nil || parts.Settings != nil {
+		a.syncSystemProxy()
 	}
 }
 

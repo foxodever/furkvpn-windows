@@ -21,6 +21,9 @@ type uiConfig struct {
 	// The app has run before: autostart was set up then.
 	Initialized   bool `json:"initialized"`
 	TrayHintShown bool `json:"trayHintShown"`
+	// The system proxy the app has set (sysproxy.go), and the user's own settings from before it.
+	ProxySet   string         `json:"proxySet,omitempty"`
+	ProxySaved *proxySettings `json:"proxySaved,omitempty"`
 }
 
 func userConfigPath() string {
@@ -47,6 +50,21 @@ func (c uiConfig) save() {
 	_ = settings.WriteAtomically(userConfigPath(), data)
 }
 
+// uiConfig is a copy of what the window remembers.
+func (a *App) uiConfig() uiConfig {
+	a.uiMu.Lock()
+	defer a.uiMu.Unlock()
+	return a.ui
+}
+
+// updateUI changes what the window remembers and saves it.
+func (a *App) updateUI(change func(c *uiConfig)) {
+	a.uiMu.Lock()
+	defer a.uiMu.Unlock()
+	change(&a.ui)
+	a.ui.save()
+}
+
 func localAppData() string {
 	if dir, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, 0); err == nil {
 		return dir
@@ -56,12 +74,11 @@ func localAppData() string {
 
 // firstRun: the app starts with Windows unless the user turns it off.
 func (a *App) firstRun() {
-	if a.ui.Initialized {
+	if a.uiConfig().Initialized {
 		return
 	}
 	_ = setAutostart(true)
-	a.ui.Initialized = true
-	a.ui.save()
+	a.updateUI(func(c *uiConfig) { c.Initialized = true })
 }
 
 // systemUsesDarkTheme reads the apps' theme of Windows (Settings → Personalization → Colors).

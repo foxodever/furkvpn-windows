@@ -137,6 +137,10 @@ Section "Install"
     File "${DIST}\FurkVPNService.exe"
     File "${DIST}\wintun.dll"
   ${EndIf}
+  ; The stopped app couldn't put back the system proxy it may have set (the VPN without TUN):
+  ; the new one does, and sets it again itself once the VPN is back on.
+  nsExec::Exec '"$INSTDIR\FurkVPN.exe" --restore-proxy'
+  Pop $0
 
   ; WebView2 draws the window; Windows 11 has it, older Windows 10 may not.
   ReadRegStr $0 HKLM "${WEBVIEW2_KEY}" "pv"
@@ -208,6 +212,8 @@ SectionEnd
 Section "Uninstall"
   SetShellVarContext all
   !insertmacro StopApp
+  nsExec::Exec '"$INSTDIR\FurkVPN.exe" --restore-proxy'
+  Pop $0
   nsExec::ExecToLog '"$INSTDIR\FurkVPNService.exe" uninstall'
   Pop $0
   nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall delete rule "name=FurkVPN: раздача интернета"'

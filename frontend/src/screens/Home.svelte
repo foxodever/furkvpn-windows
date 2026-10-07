@@ -110,6 +110,9 @@
           <span class="body-medium muted session" class:hidden={!connected}>
             {t("session_traffic", formatBytes(app.traffic.totalDown), formatBytes(app.traffic.totalUp))}
           </span>
+          {#if connected && app.vpn.localPort}
+            <button class="proxy-mode body-small interactive" onclick={() => open("advanced")}>{t("home_proxy_mode", String(app.vpn.localPort))}</button>
+          {/if}
         </div>
 
         <div class="connect-box">
@@ -284,6 +287,13 @@
   }
   .session {
     margin-top: 2px;
+  }
+  .proxy-mode {
+    margin-top: 8px;
+    padding: 4px 12px;
+    border-radius: 8px;
+    background: var(--surface-container);
+    color: var(--on-surface-variant);
   }
   .hidden {
     visibility: hidden;

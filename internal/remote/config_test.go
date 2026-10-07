@@ -1,6 +1,9 @@
 package remote
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDefaultsWhenAPIHasNoSite(t *testing.T) {
 	cfg, err := Decode([]byte(`{}`))
@@ -65,6 +68,14 @@ func TestBrokenListsFallBack(t *testing.T) {
 		t.Fatal("an update over plain http must be ignored")
 	}
 	if len(cfg.Windows.DefaultExcludedApps) != 1 || cfg.Windows.DefaultExcludedApps[0] != "max.exe" {
+		t.Fatalf("%q", cfg.Windows.DefaultExcludedApps)
+	}
+}
+
+func TestWindowsProgramsAreFileNames(t *testing.T) {
+	cfg, _ := Decode([]byte(`{"windows":{"defaultExcludedApps":["chrome", "Telegram.exe", "C:\\Program Files\\Max\\Max.exe", " ", "a|b"]}}`))
+	want := []string{"chrome.exe", "Telegram.exe", "Max.exe"}
+	if strings.Join(cfg.Windows.DefaultExcludedApps, ",") != strings.Join(want, ",") {
 		t.Fatalf("%q", cfg.Windows.DefaultExcludedApps)
 	}
 }

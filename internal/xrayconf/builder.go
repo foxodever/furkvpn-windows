@@ -1,8 +1,9 @@
 // Package xrayconf turns a server config from the subscription into a config the Windows app
 // can run: the panel's local socks/http inbounds are replaced by Xray's own TUN inbound (Wintun),
-// which also sets up the system routes and keeps DNS from leaking past it; DNS from the TUN is
-// answered by Xray's DNS module, traffic counters are enabled. Everything else — outbounds,
-// routing rules, balancers, observatory — is used exactly as the panel sent it.
+// which also sets up the system routes and keeps DNS from leaking past it, or, without the TUN
+// (Settings → Расширенные настройки), by a proxy on 127.0.0.1; DNS from the TUN is answered by
+// Xray's DNS module, traffic counters are enabled. Everything else — outbounds, routing rules,
+// balancers, observatory — is used exactly as the panel sent it.
 package xrayconf
 
 import (
@@ -16,6 +17,7 @@ import (
 
 const (
 	TunTag        = "tun-in"
+	LocalTag      = "local-in"
 	DNSOutTag     = "dns-out"
 	ShareHTTPTag  = "share-http"
 	ShareSocksTag = "share-socks"
@@ -28,6 +30,15 @@ const (
 	TunAddress6   = "fdfe:dcba:9876::1/126"
 	TunDNS        = "172.19.0.2"
 )
+
+// Tun is the VPN adapter.
+type Tun struct {
+	MTU int
+	// IPv6 goes into the adapter as well; otherwise it is blocked past it.
+	IPv6 bool
+	// DNS may only go through the adapter.
+	StrictDNS bool
+}
 
 // ShareProxy is "Раздача интернета": a proxy for other devices on the same network.
 type ShareProxy struct {
@@ -62,8 +73,12 @@ func (r Routing) rules(a routing.Action) []string {
 // Options of a build.
 type Options struct {
 	LogLevel string
-	Share    *ShareProxy
-	Routing  *Routing
+	// The VPN adapter; without it (nil) the computer's programs reach the VPN through a proxy
+	// (SOCKS5 and HTTP) on 127.0.0.1:LocalPort.
+	Tun       *Tun
+	LocalPort int
+	Share     *ShareProxy
+	Routing   *Routing
 	// Programs that go around the VPN (exe names).
 	Excluded []string
 	// The server auto-select found best a moment ago: its first choice until the first checks end.
@@ -120,24 +135,13 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 			break
 		}
 	}
-	inbounds := []any{jsonx.Object{
-		"tag":      TunTag,
-		"protocol": "tun",
-		"port":     0,
-		"settings": jsonx.Object{
-			"name":                   AdapterName,
-			"desc":                   AdapterName,
-			"mtu":                    MTU,
-			"gateway":                []any{TunAddress4, TunAddress6},
-			"dns":                    []any{TunDNS},
-			"autoSystemRoutingTable": []any{"0.0.0.0/0", "::/0"},
-			"autoOutboundsInterface": "auto",
-			// DNS only through the TUN: Windows asks the DNS servers of every interface, and
-			// programs reach the router's resolver through its LAN route.
-			"autoSystemWfpBlockLeak": []any{"dns"},
-		},
-		"sniffing": sniffing,
-	}}
+	mainTag := LocalTag
+	main := localInbound(opt.LocalPort, sniffing)
+	if opt.Tun != nil {
+		mainTag = TunTag
+		main = tunInbound(*opt.Tun, sniffing)
+	}
+	inbounds := []any{main}
 	if s := opt.Share; s != nil {
 		httpSettings := jsonx.Object{"allowTransparent": false}
 		socksSettings := jsonx.Object{"auth": "noauth", "udp": true}
@@ -164,7 +168,7 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 			break
 		}
 	}
-	if dnsTag == "" {
+	if dnsTag == "" && opt.Tun != nil {
 		dnsTag = DNSOutTag
 		outbounds = append(outbounds, jsonx.Object{"tag": DNSOutTag, "protocol": "dns"})
 	}
@@ -183,12 +187,14 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 			"outboundTag": ShareBlockTag,
 		})
 	}
-	first = append(first, jsonx.Object{"type": "field", "inboundTag": []any{TunTag}, "port": "53", "outboundTag": dnsTag})
+	if opt.Tun != nil {
+		first = append(first, jsonx.Object{"type": "field", "inboundTag": []any{TunTag}, "port": "53", "outboundTag": dnsTag})
+	}
 	// Programs without VPN go around everything else, as if they were not in the TUN at all.
 	if names := processNames(opt.Excluded); len(names) > 0 {
 		first = append(first, jsonx.Object{
 			"type":        "field",
-			"inboundTag":  []any{TunTag},
+			"inboundTag":  []any{mainTag},
 			"process":     toAny(names),
 			"outboundTag": tagOf(template, &outbounds, "freedom", UserDirectTag),
 		})
@@ -268,6 +274,55 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 	}
 	out["log"] = logSection
 	return jsonx.Marshal(out)
+}
+
+// tunInbound is Xray's own TUN (Wintun). It also sets up the system routes, and keeps DNS, and
+// IPv6 when that doesn't go into it, from leaving past it.
+func tunInbound(t Tun, sniffing jsonx.Object) jsonx.Object {
+	mtu := t.MTU
+	if mtu == 0 {
+		mtu = MTU
+	}
+	gateway, routes := []any{TunAddress4}, []any{"0.0.0.0/0"}
+	if t.IPv6 {
+		gateway, routes = append(gateway, TunAddress6), append(routes, "::/0")
+	}
+	settings := jsonx.Object{
+		"name":                   AdapterName,
+		"desc":                   AdapterName,
+		"mtu":                    mtu,
+		"gateway":                gateway,
+		"dns":                    []any{TunDNS},
+		"autoSystemRoutingTable": routes,
+		"autoOutboundsInterface": "auto",
+	}
+	var leaks []any
+	if t.StrictDNS {
+		// Windows asks the DNS servers of every interface, and programs reach the router's
+		// resolver through its LAN route.
+		leaks = append(leaks, "dns")
+	}
+	if !t.IPv6 {
+		// No IPv6 route leads to the TUN: block it everywhere else, so programs use IPv4.
+		leaks = append(leaks, "misconfigtun")
+	}
+	if len(leaks) > 0 {
+		settings["autoSystemWfpBlockLeak"] = leaks
+	}
+	return jsonx.Object{"tag": TunTag, "protocol": "tun", "port": 0, "settings": settings, "sniffing": sniffing}
+}
+
+// localInbound is the proxy for this computer's programs when there is no TUN: SOCKS5 and HTTP on
+// one port (Xray's socks inbound answers both), for this computer only.
+func localInbound(port int, sniffing jsonx.Object) jsonx.Object {
+	return jsonx.Object{
+		"tag":      LocalTag,
+		"protocol": "socks",
+		"listen":   "127.0.0.1",
+		"port":     port,
+		"settings": jsonx.Object{"auth": "noauth", "udp": true},
+		"sniffing": sniffing,
+	}
 }
 
 // userRules: blocked first, then direct (with the LAN and .ru presets), then through VPN.
@@ -456,6 +511,7 @@ func OutboundProtocols(config []byte) map[string]string {
 func Counters(direction string) []string {
 	return []string{
 		"inbound>>>" + TunTag + ">>>traffic>>>" + direction,
+		"inbound>>>" + LocalTag + ">>>traffic>>>" + direction,
 		"inbound>>>" + ShareHTTPTag + ">>>traffic>>>" + direction,
 		"inbound>>>" + ShareSocksTag + ">>>traffic>>>" + direction,
 	}

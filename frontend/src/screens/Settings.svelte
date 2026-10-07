@@ -103,6 +103,7 @@
         subtitle={t(s?.share.enabled ? "share_on" : "share_off")}
         onclick={() => open("share")}
       />
+      <SettingsRow icon="tune" title={t("settings_advanced")} subtitle={t("settings_advanced_hint")} onclick={() => open("advanced")} />
 
       <div class="section-title">{t("settings_windows")}</div>
       <SettingsRow

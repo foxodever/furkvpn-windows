@@ -21,7 +21,7 @@ export const defaultConfig: RemoteConfig = {
   windows: { update: null, defaultExcludedApps: [] },
 };
 
-export type Screen = "home" | "onboarding" | "changeKey" | "settings" | "routing" | "apps" | "share" | "connlog";
+export type Screen = "home" | "onboarding" | "changeKey" | "settings" | "routing" | "apps" | "share" | "connlog" | "advanced";
 
 export const app = $state({
   /** The service answers; false until the first state arrives and after the pipe breaks. */

@@ -75,6 +75,9 @@
   </TopBar>
   <div class="head">
     <div class="body-medium muted hint">{t("split_hint")}</div>
+    {#if app.settings && !app.settings.tun.enabled}
+      <div class="card secondary pad body-medium proxy-hint">{t("apps_proxy_hint")}</div>
+    {/if}
     <div class="row tools">
       <label class="field round small grow">
         <Icon name="search" />
@@ -118,6 +121,9 @@
   }
   .hint {
     padding-bottom: 12px;
+  }
+  .proxy-hint {
+    margin-bottom: 12px;
   }
   .tools {
     gap: 12px;
