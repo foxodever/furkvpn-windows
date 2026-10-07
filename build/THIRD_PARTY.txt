@@ -1,0 +1,11 @@
+FurkVPN for Windows includes:
+
+- Xray-core (https://github.com/XTLS/Xray-core) — Mozilla Public License 2.0.
+- Wintun (https://www.wintun.net) by WireGuard LLC — prebuilt binaries license, see LICENSE-wintun.txt.
+- Wails (https://wails.io) — MIT License.
+- gVisor, golang.org/x/* and other Go modules — their own licenses (BSD, Apache 2.0, MIT).
+- Svelte (https://svelte.dev) — MIT License.
+- Material Symbols (https://fonts.google.com/icons) — Apache License 2.0.
+- Twemoji Country Flags (https://github.com/talkjs/country-flag-emoji-polyfill): code MIT,
+  flag images from Twemoji by Twitter, Inc. and contributors — CC BY 4.0.
+- Google Sans — the font of the FurkVPN Android app.
