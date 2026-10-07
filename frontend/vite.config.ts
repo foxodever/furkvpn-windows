@@ -6,7 +6,8 @@ export default defineConfig({
   base: "./",
   build: {
     outDir: "dist",
-    emptyOutDir: true,
+    // dist/.gitkeep stays (Go embeds dist even before the first build); old assets go in "npm run build".
+    emptyOutDir: false,
     target: "es2022",
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 2000,
