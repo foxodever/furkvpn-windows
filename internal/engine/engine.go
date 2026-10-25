@@ -76,7 +76,6 @@ type Engine struct {
 	wl              whitelistView
 	pings           map[string]Ping
 	pinging         bool
-	autoCheck       *AutoCheck
 	upd             updateView
 	refreshing      bool
 
@@ -273,16 +272,29 @@ func (e *Engine) deviceHeaders() http.Header {
 
 func (e *Engine) configPath() string { return filepath.Join(e.opt.DataDir, "remote_config.json") }
 
+// cachedConfig is remote_config.json: the API's answer as it came, and the version of the app that
+// fetched it. A newer version may read fields the older one had no use for, so for it the cache
+// is stale and the settings are fetched again at the first chance.
+type cachedConfig struct {
+	AppVersion string          `json:"appVersion"`
+	Config     json.RawMessage `json:"config"`
+}
+
 func (e *Engine) loadConfig() remote.Config {
 	data, err := os.ReadFile(e.configPath())
 	if err != nil {
 		return remote.Defaults()
 	}
-	cfg, err := remote.Decode(data)
+	var cached cachedConfig
+	if json.Unmarshal(data, &cached) != nil || len(cached.Config) == 0 {
+		// Before 1.2.0 the file was the decoded settings themselves.
+		cached = cachedConfig{Config: data}
+	}
+	cfg, err := remote.Decode(cached.Config)
 	if err != nil {
 		return remote.Defaults()
 	}
-	if st, err := os.Stat(e.configPath()); err == nil {
+	if st, err := os.Stat(e.configPath()); err == nil && cached.AppVersion == version.Name {
 		e.configFetchedAt = st.ModTime()
 	}
 	return cfg
@@ -320,7 +332,7 @@ func (e *Engine) refreshConfig(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	stored, _ := json.Marshal(cfg)
+	stored, _ := json.Marshal(cachedConfig{AppVersion: version.Name, Config: data})
 	_ = settings.WriteAtomically(e.configPath(), stored)
 	e.mu.Lock()
 	old := e.config
@@ -331,7 +343,8 @@ func (e *Engine) refreshConfig(ctx context.Context) error {
 		e.applySoon()
 	}
 	e.updateAvailability()
-	e.changed("config", "exclusions", "pings", "update")
+	// The subscription's renewal link is on the site, whose domain comes with the config.
+	e.changed("config", "subscription", "exclusions", "pings", "update")
 	return nil
 }
 

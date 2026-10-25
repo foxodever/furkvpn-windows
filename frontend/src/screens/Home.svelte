@@ -13,6 +13,7 @@
   import ServersList from "./ServersList.svelte";
   import Whitelist from "./Whitelist.svelte";
   import Support from "./Support.svelte";
+  import TelegramProxies from "./TelegramProxies.svelte";
   import { app, open, act, setSetting, snackbar } from "../lib/state.svelte";
   import { call, system } from "../lib/bridge";
   import { t, plural } from "../lib/i18n";
@@ -21,6 +22,7 @@
   let width = $state(window.innerWidth);
   let showServers = $state(false);
   let showSupport = $state(false);
+  let showProxies = $state(false);
   let now = $state(Date.now());
 
   const wide = $derived(width >= 720);
@@ -51,6 +53,8 @@
   const nowSeconds = $derived(Math.floor(now / 1000));
   const expired = $derived(expiresAt !== null && expiresAt <= nowSeconds);
   const daysLeft = $derived(expiresAt !== null ? Math.max(0, Math.floor((expiresAt - nowSeconds) / 86400)) : null);
+  // "Продлить" when less than 2 days are left (or none), "Купить тариф" on the free plan.
+  const endsSoon = $derived(expiresAt !== null && expiresAt - nowSeconds < 2 * 86400);
   const trafficLimit = $derived((account ? account.trafficLimit : (sub?.total ?? null)) || null);
   const trafficUsed = $derived(account ? account.trafficUsed : sub ? (sub.upload ?? 0) + (sub.download ?? 0) : null);
   const showAccount = $derived(!!account || expiresAt !== null);
@@ -150,8 +154,10 @@
               {:else if trafficUsed}
                 <div class="body-small muted used">{t("traffic_used_only", formatBytes(trafficUsed))}</div>
               {/if}
-              {#if expired || account?.isFree || (daysLeft !== null && daysLeft <= 5)}
-                <button class="btn tonal interactive renew" onclick={() => system.openURL(app.config.renewUrl)}>{t("action_renew")}</button>
+              {#if account?.isFree || endsSoon}
+                <button class="btn tonal interactive renew" onclick={() => system.openURL(app.subscription.renewUrl || app.config.renewUrl)}>
+                  {t(account?.isFree ? "action_buy_plan" : "action_renew")}
+                </button>
               {/if}
             </div>
           {/if}
@@ -197,6 +203,16 @@
             <span class="label-medium">{t("support_title")}</span>
           </button>
         </div>
+        {#if app.config.telegramProxies.length > 0}
+          <button class="tg-proxies row interactive" onclick={() => (showProxies = true)}>
+            <span class="primary-text"><TelegramIcon /></span>
+            <span class="grow col">
+              <span class="title-small">{t("tg_proxies_title")}</span>
+              <span class="body-small muted">{t("tg_proxies_subtitle")}</span>
+            </span>
+            <span class="muted"><Icon name="chevron_right" /></span>
+          </button>
+        {/if}
       </div>
     </div>
 
@@ -236,6 +252,10 @@
       <ServersList onselected={() => (showServers = false)} />
     </div>
   </Dialog>
+{/if}
+
+{#if showProxies}
+  <TelegramProxies onclose={() => (showProxies = false)} />
 {/if}
 
 {#if showSupport}
@@ -414,6 +434,16 @@
   .quick {
     width: 100%;
     margin-top: 8px;
+  }
+  .tg-proxies {
+    width: 100%;
+    gap: 16px;
+    margin-top: 8px;
+    padding: 14px 16px;
+    border-radius: 24px;
+    background: var(--surface-container);
+    color: var(--on-surface);
+    text-align: left;
   }
   .action {
     flex: 1;

@@ -46,21 +46,15 @@ func SetConnectionListener(l ConnectionListener) {
 	listenerMu.Lock()
 	listener = l
 	listenerMu.Unlock()
-	restoreLogHandler()
+	createMu.Lock()
+	restoreRunningLocked()
+	createMu.Unlock()
 }
 
 func currentListener() ConnectionListener {
 	listenerMu.RLock()
 	defer listenerMu.RUnlock()
 	return listener
-}
-
-// restoreLogHandler points Xray's process-wide log handler back at the running instance's logger.
-// Every core.New installs its own logger, including the short-lived delay-test instances.
-func restoreLogHandler() {
-	if inst := current(); inst != nil {
-		installLogHandler(inst)
-	}
 }
 
 // installLogHandler wraps the instance's logger with the connection log when it is on.

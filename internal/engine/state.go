@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"net/url"
+	"strings"
 	"time"
 
 	"furkvpn/internal/core"
@@ -52,27 +54,6 @@ type Traffic struct {
 type Ping struct {
 	State string `json:"state"`
 	MS    int64  `json:"ms,omitempty"`
-}
-
-// AutoServer is a server inside auto-select; Alive is nil until it has been checked.
-type AutoServer struct {
-	Tag   string `json:"tag"`
-	Flag  string `json:"flag,omitempty"`
-	Title string `json:"title"`
-	Alive *bool  `json:"alive"`
-	Delay *int64 `json:"delay"`
-}
-
-// AutoCheck: holding (right-clicking) auto-select shows its servers as the running auto-select
-// sees them (Live), or pinged one by one.
-type AutoCheck struct {
-	Key        string       `json:"key"`
-	Name       string       `json:"name"`
-	Live       bool         `json:"live"`
-	Checking   bool         `json:"checking"`
-	Servers    []AutoServer `json:"servers"`
-	cancel     context.CancelFunc
-	rechecking bool
 }
 
 type probeView struct {
@@ -136,7 +117,7 @@ type settingsView struct {
 // sliceNames are the parts of the state; each is sent to the windows only when it changes.
 var sliceNames = []string{
 	"meta", "vpn", "traffic", "subscription", "account", "config", "settings", "exclusions",
-	"routing", "whitelist", "pings", "autoCheck", "update", "lan",
+	"routing", "whitelist", "pings", "update", "lan",
 }
 
 // slice builds one part of the state.
@@ -155,13 +136,14 @@ func (e *Engine) slice(name string) any {
 		if sel := e.subs.Selected(e.settings.Get().SelectedServer); sel != nil {
 			selected = sel.Key
 		}
+		renew := renewURL(info, e.cfg())
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		var v any
 		if info != nil {
 			v = info
 		}
-		return map[string]any{"info": v, "refreshing": e.refreshing, "selected": selected}
+		return map[string]any{"info": v, "refreshing": e.refreshing, "selected": selected, "renewUrl": renew}
 	case "config":
 		return e.cfg()
 	case "settings":
@@ -221,17 +203,29 @@ func (e *Engine) slice(name string) any {
 		return e.account
 	case "whitelist":
 		return e.wl
-	case "autoCheck":
-		if e.autoCheck == nil {
-			return nil
-		}
-		return *e.autoCheck
 	case "update":
 		return e.upd
 	case "lan":
 		return e.lan
 	}
 	return nil
+}
+
+// renewURL is where "Продлить" and "Купить тариф" lead: the site's payment page for this
+// subscription (the last part of the key's path is its id), or the API's renewUrl (the bot) when
+// there is none.
+func renewURL(info *subs.Info, cfg remote.Config) string {
+	if info != nil {
+		if u, err := url.Parse(info.URL); err == nil {
+			parts := strings.Split(u.Path, "/")
+			for i := len(parts) - 1; i >= 0; i-- {
+				if parts[i] != "" {
+					return cfg.Site.RenewalURL(parts[i])
+				}
+			}
+		}
+	}
+	return cfg.RenewURL
 }
 
 // pingWhitelistOnlyLocked: white lists are on, so the ping button checks only the servers that

@@ -79,3 +79,32 @@ func TestWindowsProgramsAreFileNames(t *testing.T) {
 		t.Fatalf("%q", cfg.Windows.DefaultExcludedApps)
 	}
 }
+
+func TestOnlyTelegramLinksAreKept(t *testing.T) {
+	cfg, _ := Decode([]byte(`{"telegramProxies":[
+	  {"title":"Польша","flag":"🇵🇱","url":"https://t.me/webproxy?server=a.net%2Fx&secret=s"},
+	  {"title":"MTProto","url":" tg://proxy?server=1.2.3.4&port=443&secret=dd00"},
+	  {"title":"Чужой","url":"https://evil.example/t.me/proxy"},
+	  {"title":"","url":"https://t.me/proxy?server=b"},
+	  {"title":"Unknown field","url":"HTTPS://t.me/socks?server=c&port=1080","extra":1}
+	]}`))
+	var titles []string
+	for _, p := range cfg.TelegramProxies {
+		titles = append(titles, p.Title)
+	}
+	if strings.Join(titles, ",") != "Польша,MTProto,Unknown field" || cfg.TelegramProxies[1].URL != "tg://proxy?server=1.2.3.4&port=443&secret=dd00" {
+		t.Fatalf("%+v", cfg.TelegramProxies)
+	}
+	if none, _ := Decode([]byte(`{}`)); none.TelegramProxies == nil || len(none.TelegramProxies) != 0 {
+		t.Fatalf("no proxies by default: %#v", none.TelegramProxies)
+	}
+}
+
+func TestRenewalPageOfTheSubscription(t *testing.T) {
+	if got := Defaults().Site.RenewalURL("abcDEF123456XYZ0"); got != "https://furkvpn.info/renewal?sub=abcDEF123456XYZ0" {
+		t.Error(got)
+	}
+	if got := (SiteConfig{Domain: "furkvpn2.info"}).RenewalURL("a/b&c"); got != "https://furkvpn2.info/renewal?sub=a%2Fb%26c" {
+		t.Error(got)
+	}
+}

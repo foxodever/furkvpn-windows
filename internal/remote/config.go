@@ -4,6 +4,7 @@ package remote
 
 import (
 	"encoding/json"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -23,6 +24,8 @@ type Config struct {
 	Links []AppLink `json:"links"`
 	// Current domains of the website and its API.
 	Site SiteConfig `json:"site"`
+	// "Прокси для Telegram" under the links on the main screen; hidden while empty.
+	TelegramProxies []TelegramProxy `json:"telegramProxies"`
 	// Tabs above the server list: servers whose names contain the emoji.
 	ServerFilters []ServerFilter `json:"serverFilters"`
 	// Operator white-list detection and the servers to switch to.
@@ -65,6 +68,28 @@ type WhitelistConfig struct {
 	PingServers []string `json:"pingServers"`
 }
 
+// TelegramProxy is a proxy Telegram adds from its link (https://t.me/proxy, /socks, /webproxy or
+// tg://).
+type TelegramProxy struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+	Flag  string `json:"flag,omitempty"`
+}
+
+var telegramLinkPrefixes = []string{"https://t.me/", "https://telegram.me/", "tg://"}
+
+func (p TelegramProxy) valid() bool {
+	if strings.TrimSpace(p.Title) == "" {
+		return false
+	}
+	for _, prefix := range telegramLinkPrefixes {
+		if len(p.URL) >= len(prefix) && strings.EqualFold(p.URL[:len(prefix)], prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // SiteConfig holds host names without "https://".
 type SiteConfig struct {
 	Domain string `json:"domain"`
@@ -75,6 +100,12 @@ type SiteConfig struct {
 // InstallURL is "Войти через сайт" → "Войти через браузер": the account page with the button
 // that adds the key to the app.
 func (s SiteConfig) InstallURL() string { return "https://" + s.Domain + "/dashboard/install" }
+
+// RenewalURL is "Продлить" / "Купить тариф": the site's payment page for the subscription
+// subscriptionID (its short UUID).
+func (s SiteConfig) RenewalURL(subscriptionID string) string {
+	return "https://" + s.Domain + "/renewal?sub=" + url.QueryEscape(subscriptionID)
+}
 
 // WindowsConfig is the "windows" block of the API, ignored by the Android app.
 type WindowsConfig struct {
@@ -168,6 +199,14 @@ func Sanitize(c Config) Config {
 		}
 	}
 	c.ServerFilters = filters
+	proxies := []TelegramProxy{}
+	for _, p := range c.TelegramProxies {
+		p.URL = strings.TrimSpace(p.URL)
+		if p.valid() {
+			proxies = append(proxies, p)
+		}
+	}
+	c.TelegramProxies = proxies
 	if strings.TrimSpace(c.TelegramBotURL) == "" {
 		c.TelegramBotURL = d.TelegramBotURL
 	}

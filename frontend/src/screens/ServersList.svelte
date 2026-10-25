@@ -7,7 +7,6 @@
   import FlagAvatar from "../components/FlagAvatar.svelte";
   import PingText from "../components/PingText.svelte";
   import Menu, { type MenuItem } from "../components/Menu.svelte";
-  import AutoCheckDialog from "./AutoCheckDialog.svelte";
   import { app, ui, act, refreshSubscription } from "../lib/state.svelte";
   import { t } from "../lib/i18n";
   import type { ServerEntry } from "../lib/types";
@@ -55,18 +54,13 @@
     onselected?.();
   }
 
-  function check(e: ServerEntry) {
-    if (e.kind === "auto") act("openAutoCheck", { key: e.key });
-    else act("pingServer", { key: e.key });
-  }
-
   function contextMenu(ev: MouseEvent, e: ServerEntry) {
     ev.preventDefault();
     menu = {
       x: ev.clientX,
       y: ev.clientY,
       items: [
-        { label: e.kind === "auto" ? t("servers_auto_check") : t("servers_ping_one"), icon: e.kind === "auto" ? "hub" : "speed", action: () => check(e) },
+        { label: t("servers_ping_one"), icon: "speed", action: () => act("pingServer", { key: e.key }) },
         { label: t("servers_select"), icon: "check", action: () => select(e) },
       ],
     };
@@ -138,10 +132,6 @@
 
 {#if menu}
   <Menu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
-{/if}
-
-{#if app.autoCheck}
-  <AutoCheckDialog check={app.autoCheck} />
 {/if}
 
 <style>

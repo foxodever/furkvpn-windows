@@ -9,13 +9,15 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"furkvpn/internal/core"
-	"furkvpn/internal/ipc"
 	"furkvpn/internal/settings"
+	"furkvpn/internal/version"
 )
 
 func vlessConfig(remarks, address string) string {
@@ -141,6 +143,10 @@ func TestImportConnectRebuildDisconnect(t *testing.T) {
 	}
 
 	state := e.fullState()
+	var sub struct{ RenewURL string }
+	if err := json.Unmarshal(state["subscription"], &sub); err != nil || sub.RenewURL != "https://furkvpn.info/renewal?sub=abcDEF123456" {
+		t.Fatalf("renewal link %s %v", state["subscription"], err)
+	}
 	var vpn vpnView
 	if err := json.Unmarshal(state["vpn"], &vpn); err != nil || vpn.Status != StatusConnected {
 		t.Fatalf("%s %v", state["vpn"], err)
@@ -165,55 +171,6 @@ func TestForeignKeysAreRefused(t *testing.T) {
 	}
 	if err := e.Connect(); err == nil && e.connected() {
 		t.Fatal("connected without a key")
-	}
-}
-
-// The auto-select window is refreshed for the windows: when the last one goes away (the app quit
-// with it open), the service stops.
-func TestAutoCheckClosesWithTheLastWindow(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var windows *ipc.Server
-	e, _ := newEngine(t, testServer(t), func(e *Engine) {
-		windows = ipc.NewServer(listener, e)
-		e.Attach(windows)
-	})
-	go windows.Serve(context.Background())
-	defer windows.Close()
-	dial := func() *ipc.Client {
-		nc, err := net.Dial("tcp", listener.Addr().String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		return ipc.NewClient(nc, func(ipc.Event) {})
-	}
-	first, second := dial(), dial()
-	waitFor(t, "two windows", func() bool { return windows.Count() == 2 })
-
-	stopped := make(chan struct{})
-	e.mu.Lock()
-	e.autoCheck = &AutoCheck{Key: "auto", cancel: func() { close(stopped) }}
-	e.mu.Unlock()
-
-	_ = first.Close()
-	waitFor(t, "one window", func() bool { return windows.Count() == 1 })
-	select {
-	case <-stopped:
-		t.Fatal("closed while a window is still there")
-	case <-time.After(200 * time.Millisecond):
-	}
-	_ = second.Close()
-	select {
-	case <-stopped:
-	case <-time.After(5 * time.Second):
-		t.Fatal("still refreshed with no window")
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.autoCheck != nil {
-		t.Fatal("the window is still open")
 	}
 }
 
@@ -266,4 +223,27 @@ func TestProxyModeFollowsItsSettings(t *testing.T) {
 		t.Fatalf("the proxy doesn't listen: %v", err)
 	}
 	_ = conn.Close()
+}
+
+// The cached settings from furkapp.net are fresh only for the app version that fetched them: an
+// updated app fetches them again, for the fields the old one did not keep.
+func TestCachedConfigOfAnotherVersionIsStale(t *testing.T) {
+	cases := map[string]bool{
+		`{"telegramProxies":[]}`: false, // before 1.2.0: the decoded settings themselves
+		`{"appVersion":"` + version.Name + `","config":{"telegramProxies":[{"title":"A","url":"tg://proxy?server=a"}]}}`: true,
+		`{"appVersion":"0.0.1","config":{}}`: false,
+	}
+	for cache, fresh := range cases {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "remote_config.json"), []byte(cache), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		e := New(context.Background(), Options{DataDir: dir, Log: log.New(io.Discard, "", 0), DevProxyOnly: true})
+		if got := !e.configFetchedAt.IsZero(); got != fresh {
+			t.Errorf("%s: fresh %v, want %v", cache, got, fresh)
+		}
+		if fresh && len(e.cfg().TelegramProxies) != 1 {
+			t.Errorf("%s: %+v", cache, e.cfg().TelegramProxies)
+		}
+	}
 }

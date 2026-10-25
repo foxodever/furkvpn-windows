@@ -16,13 +16,8 @@ func (e *Engine) Connected(c *ipc.Conn) {
 	c.Send("state", e.fullState())
 }
 
-// Disconnected is called when a window goes away: the auto-select window was its, and stays open
-// for nobody otherwise.
-func (e *Engine) Disconnected(c *ipc.Conn) {
-	if e.server != nil && e.server.Count() == 0 {
-		e.CloseAutoCheck()
-	}
-}
+// Disconnected is called when a window goes away.
+func (e *Engine) Disconnected(c *ipc.Conn) {}
 
 func decode[T any](params json.RawMessage) (T, error) {
 	var v T
@@ -94,19 +89,6 @@ func (e *Engine) Handle(ctx context.Context, c *ipc.Conn, method string, params 
 			return nil, err
 		}
 		e.PingServer(p.Key)
-		return nil, nil
-	case "openAutoCheck":
-		p, err := decode[struct{ Key string }](params)
-		if err != nil {
-			return nil, err
-		}
-		e.OpenAutoCheck(p.Key)
-		return nil, nil
-	case "recheckAuto":
-		e.RecheckAuto()
-		return nil, nil
-	case "closeAutoCheck":
-		e.CloseAutoCheck()
 		return nil, nil
 
 	case "checkWhitelist":

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"furkvpn/internal/jsonx"
 )
 
 func config(remarks string, balancer bool, addresses ...string) string {
@@ -79,41 +77,5 @@ func TestHeaders(t *testing.T) {
 	info := ParseUserInfo("upload=1; download=2; total=0; expire=1790000000")
 	if info["upload"] != 1 || info["download"] != 2 || info["total"] != 0 || info["expire"] != 1790000000 || len(info) != 4 {
 		t.Fatalf("%v", info)
-	}
-}
-
-func obj(t *testing.T, s string) jsonx.Object {
-	o, err := jsonx.ParseObject([]byte(s))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return o
-}
-
-func vless(tag, address string, port int) string {
-	return fmt.Sprintf(`{"tag":%q,"protocol":"vless","settings":{"vnext":[{"address":%q,"port":%d,"users":[]}]}}`, tag, address, port)
-}
-
-func TestAutoSelectServersAreNamedAfterTheList(t *testing.T) {
-	configs := []jsonx.Object{
-		obj(t, `{"remarks":"🇪🇺 Автовыбор","outbounds":[`+vless("proxy", "a.net", 443)+`,`+vless("proxy-2", "b.net", 2053)+`,`+vless("proxy-3", "c.net", 443)+`],"routing":{"balancers":[{"tag":"x","selector":["proxy"]}]}}`),
-		obj(t, `{"remarks":"🇳🇱 Нидерланды","outbounds":[`+vless("proxy", "a.net", 443)+`]}`),
-		// Same address, other port: a different server.
-		obj(t, `{"remarks":"🇩🇪 Германия","outbounds":[`+vless("proxy", "b.net", 443)+`]}`),
-		obj(t, `{"remarks":"🇫🇷 Франция","outbounds":[`+vless("proxy", "b.net", 2053)+`]}`),
-	}
-	entries := Entries(configs)
-	members := AutoMembers(configs[0], configs, entries)
-	if len(members) != 3 || members[0].Tag != "proxy" || members[1].Tag != "proxy-2" || members[2].Tag != "proxy-3" {
-		t.Fatalf("%+v", members)
-	}
-	if members[0].Server == nil || members[0].Server.Title != "Нидерланды" {
-		t.Fatalf("%+v", members[0])
-	}
-	if members[1].Server == nil || members[1].Server.Title != "Франция" {
-		t.Fatalf("%+v", members[1])
-	}
-	if members[2].Server != nil || members[2].Address != "c.net" {
-		t.Fatalf("%+v", members[2])
 	}
 }

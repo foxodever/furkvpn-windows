@@ -47,6 +47,8 @@ export interface SubscriptionSlice {
   info: SubscriptionInfo | null;
   refreshing: boolean;
   selected: string;
+  /** "Продлить" / "Купить тариф": the site's payment page for this subscription. */
+  renewUrl: string;
 }
 
 export interface Account {
@@ -81,6 +83,13 @@ export interface UpdateInfo {
   changelog?: string;
 }
 
+/** A proxy Telegram adds from its link (https://t.me/… or tg://…). */
+export interface TelegramProxy {
+  title: string;
+  url: string;
+  flag?: string;
+}
+
 export interface RemoteConfig {
   allowedSubscriptionHosts: string[];
   subscriptionMirrors: string[];
@@ -89,6 +98,7 @@ export interface RemoteConfig {
   support: SupportContact[];
   links: AppLink[];
   site: { domain: string; apiDomain: string };
+  telegramProxies: TelegramProxy[];
   serverFilters: { emoji: string; title: string }[];
   whitelist: {
     blockedProbes: string[];
@@ -191,22 +201,6 @@ export interface PingsView {
   pinging: boolean;
   results: Record<string, Ping>;
   whitelistOnly: boolean;
-}
-
-export interface AutoServer {
-  tag: string;
-  flag?: string;
-  title: string;
-  alive: boolean | null;
-  delay: number | null;
-}
-
-export interface AutoCheck {
-  key: string;
-  name: string;
-  live: boolean;
-  checking: boolean;
-  servers: AutoServer[];
 }
 
 export interface UpdateView {

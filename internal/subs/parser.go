@@ -68,14 +68,6 @@ func (i *Info) Selectable() []Entry {
 	return out
 }
 
-// AutoMember is a server inside an auto-select config: its outbound tag and, when found, the
-// same server in the list.
-type AutoMember struct {
-	Tag     string `json:"tag"`
-	Address string `json:"address,omitempty"`
-	Server  *Entry `json:"server,omitempty"`
-}
-
 var proxyProtocols = map[string]bool{
 	"vless": true, "vmess": true, "trojan": true, "shadowsocks": true,
 	"hysteria": true, "wireguard": true, "socks": true, "http": true,
@@ -148,42 +140,6 @@ func Entries(configs []jsonx.Object) []Entry {
 	return out
 }
 
-// AutoMembers lists the servers inside an auto-select config: each proxy outbound with the server
-// of the list that has the same address and port, so they can be shown by name.
-func AutoMembers(auto jsonx.Object, configs []jsonx.Object, entries []Entry) []AutoMember {
-	byEndpoint := map[string]Entry{}
-	for i, config := range configs {
-		if i >= len(entries) || entries[i].Kind != KindServer {
-			continue
-		}
-		proxies := proxiesOf(config)
-		if len(proxies) == 0 {
-			continue
-		}
-		if ep, ok := endpointOf(proxies[0]); ok {
-			if _, exists := byEndpoint[ep]; !exists {
-				byEndpoint[ep] = entries[i]
-			}
-		}
-	}
-	var out []AutoMember
-	for _, outbound := range proxiesOf(auto) {
-		tag := jsonx.S(outbound, "tag")
-		if tag == "" {
-			continue
-		}
-		m := AutoMember{Tag: tag, Address: AddressOf(outbound)}
-		if ep, ok := endpointOf(outbound); ok {
-			if e, found := byEndpoint[ep]; found {
-				e := e
-				m.Server = &e
-			}
-		}
-		out = append(out, m)
-	}
-	return out
-}
-
 func proxiesOf(config jsonx.Object) []jsonx.Object {
 	var out []jsonx.Object
 	for _, o := range jsonx.Objects(config["outbounds"]) {
@@ -192,33 +148,6 @@ func proxiesOf(config jsonx.Object) []jsonx.Object {
 		}
 	}
 	return out
-}
-
-// endpointOf is "address:port" of an outbound, to recognize the same server in different configs.
-func endpointOf(outbound jsonx.Object) (string, bool) {
-	settings := jsonx.Obj(outbound["settings"])
-	if settings == nil {
-		return "", false
-	}
-	target := settings
-	list := jsonx.Arr(settings["vnext"])
-	if list == nil {
-		list = jsonx.Arr(settings["servers"])
-	}
-	if list != nil {
-		if len(list) == 0 {
-			return "", false
-		}
-		target = jsonx.Obj(list[0])
-		if target == nil {
-			return "", false
-		}
-	}
-	address, ok := jsonx.Str(target, "address")
-	if !ok {
-		return "", false
-	}
-	return address + ":" + jsonx.S(target, "port"), true
 }
 
 // AddressOf is the server address of a proxy outbound.

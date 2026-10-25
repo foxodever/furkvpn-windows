@@ -123,28 +123,6 @@ func (r *Repo) ConfigFor(serverKey string) []byte {
 	return nil
 }
 
-// AutoMembers are the servers inside the auto-select config serverKey, named after the matching
-// servers of the list.
-func (r *Repo) AutoMembers(serverKey string) []AutoMember {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.info == nil {
-		return nil
-	}
-	configs := make([]jsonx.Object, len(r.configs))
-	index := -1
-	for i, raw := range r.configs {
-		configs[i], _ = jsonx.ParseObject(raw)
-		if i < len(r.info.Servers) && r.info.Servers[i].Key == serverKey {
-			index = i
-		}
-	}
-	if index < 0 || configs[index] == nil {
-		return nil
-	}
-	return AutoMembers(configs[index], configs, r.info.Servers)
-}
-
 // Selected is the selected server, or the first one that can be selected.
 func (r *Repo) Selected(saved string) *Entry {
 	info := r.Info()

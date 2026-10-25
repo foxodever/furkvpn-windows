@@ -3,7 +3,7 @@
 import { call, CallError, onEvent, system } from "./bridge";
 import { t, type StringKey } from "./i18n";
 import type {
-  Account, AutoCheck, Exclusions, LanAddress, Meta, PingsView, RemoteConfig, RoutingView, SettingsImport,
+  Account, Exclusions, LanAddress, Meta, PingsView, RemoteConfig, RoutingView, SettingsImport,
   SettingsView, SubscriptionSlice, Traffic, UpdateView, VpnView, WhitelistView,
 } from "./types";
 
@@ -15,6 +15,7 @@ export const defaultConfig: RemoteConfig = {
   support: [],
   links: [],
   site: { domain: "furkvpn.info", apiDomain: "api.furkvpn.info" },
+  telegramProxies: [],
   serverFilters: [],
   whitelist: { blockedProbes: [], allowedProbes: [], lteServer: [], wifiServer: [], bypassServer: [], pingServers: [] },
   delayTestUrl: "",
@@ -30,7 +31,7 @@ export const app = $state({
   loaded: false,
   vpn: { status: "idle" } as VpnView,
   traffic: { up: 0, down: 0, totalUp: 0, totalDown: 0 } as Traffic,
-  subscription: { info: null, refreshing: false, selected: "" } as SubscriptionSlice,
+  subscription: { info: null, refreshing: false, selected: "", renewUrl: "" } as SubscriptionSlice,
   account: null as Account | null,
   config: defaultConfig,
   settings: null as SettingsView | null,
@@ -38,7 +39,6 @@ export const app = $state({
   routing: { enabled: true, lanDirect: true, ruDirect: false, direct: [], proxy: [], block: [] } as RoutingView,
   whitelist: { status: "unknown", checking: false, lastCheck: null } as WhitelistView,
   pings: { pinging: false, results: {}, whitelistOnly: false } as PingsView,
-  autoCheck: null as AutoCheck | null,
   update: { available: null, progress: null, ready: false } as UpdateView,
   lan: [] as LanAddress[] | null,
   meta: { version: "", versionCode: 0, xray: "", os: "" } as Meta,
@@ -87,14 +87,10 @@ const messageTexts: Record<string, StringKey> = {
 };
 
 export function start() {
-  let first = true;
   onEvent("state", (data: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(data)) {
       (app as Record<string, unknown>)[key] = value ?? (key === "config" ? defaultConfig : null);
     }
-    // An auto-select window left open by a window that was closed or reloaded.
-    if (first && app.autoCheck) call("closeAutoCheck").catch(() => {});
-    first = false;
     app.online = true;
     app.loaded = true;
   });

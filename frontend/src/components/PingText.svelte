@@ -20,12 +20,12 @@
 
 {#if ping?.state === "testing"}
   <Spinner size={16} stroke={2} />
-{:else if kind === "auto"}
-  <span class="label-large primary-text ping">{t("server_auto")}</span>
 {:else if ping?.state === "ok"}
   <span class="label-large ping" style="color:{color(ping)}">{t("ping_ms", ping.ms)}</span>
 {:else if ping?.state === "failed"}
   <span class="label-large ping" style="color:{color(ping)}">{t("ping_failed")}</span>
+{:else if kind === "auto"}
+  <span class="label-large primary-text ping">{t("server_auto")}</span>
 {/if}
 
 <style>

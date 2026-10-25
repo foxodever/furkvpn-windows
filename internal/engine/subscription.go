@@ -115,7 +115,6 @@ func (e *Engine) Logout() {
 	e.subs.Clear()
 	e.clearAccount()
 	e.clearPings()
-	e.CloseAutoCheck()
 	_, _ = e.settings.Update(func(s *settings.Settings) {
 		s.SelectedServer = ""
 		s.WhitelistAutoSwitched = ""
