@@ -86,16 +86,35 @@ func Open(o Options) *Repo {
 			r.info = &info
 		}
 	}
-	if data, err := os.ReadFile(r.configsPath()); err == nil {
+	if data, err := os.ReadFile(r.configsPath()); err == nil && r.info != nil {
+		var saved savedConfigs
 		var list []json.RawMessage
-		if json.Unmarshal(data, &list) == nil {
+		switch {
+		case json.Unmarshal(data, &saved) == nil && saved.Configs != nil:
+			// Servers are matched to configs by position: a list from another download (the
+			// service was stopped between saving the two files) would give servers wrong configs.
+			if saved.FetchedAt == r.info.FetchedAt {
+				r.configs = saved.Configs
+			}
+		case json.Unmarshal(data, &list) == nil && len(list) == len(r.info.Servers):
+			// Before 1.3.0: a bare list.
 			r.configs = list
 		}
 	}
 	if r.info != nil && len(r.configs) != len(r.info.Servers) {
-		r.info, r.configs = nil, nil
+		// The key stays; the servers come again with the next refresh, due right away.
+		info := *r.info
+		info.FetchedAt = 0
+		r.info, r.configs = &info, nil
 	}
 	return r
+}
+
+// savedConfigs is subscription_configs.json: the servers' configs and the FetchedAt of the list
+// (subscription.json) they belong to.
+type savedConfigs struct {
+	FetchedAt int64             `json:"fetchedAt"`
+	Configs   []json.RawMessage `json:"configs"`
 }
 
 func (r *Repo) infoPath() string    { return filepath.Join(r.dir, "subscription.json") }
@@ -173,8 +192,28 @@ func (r *Repo) Import(ctx context.Context, key keys.Key) (*Info, error) {
 	return r.save(key, d)
 }
 
-// Refresh downloads the current subscription again; the old copy stays on failure.
+// Refresh downloads the current subscription again; the old copy stays on failure. Nil, nil:
+// there is no key.
 func (r *Repo) Refresh(ctx context.Context) (*Info, error) {
+	r.op.Lock()
+	defer r.op.Unlock()
+	return r.refreshLocked(ctx)
+}
+
+// RefreshIfStale is Refresh when the subscription is still due once the lock is ours, so a
+// refresh that waited for another one doesn't download it again. Nil, nil: nothing to do.
+func (r *Repo) RefreshIfStale(ctx context.Context, updateHours int) (*Info, error) {
+	r.op.Lock()
+	defer r.op.Unlock()
+	if !r.IsStale(updateHours, time.Now()) {
+		return nil, nil
+	}
+	return r.refreshLocked(ctx)
+}
+
+func (r *Repo) refreshLocked(ctx context.Context) (*Info, error) {
+	// Read under the lock: an import or a logout queued before this refresh may have replaced
+	// the key, and its subscription must not be overwritten with the old key's.
 	info := r.Info()
 	if info == nil {
 		return nil, nil
@@ -183,8 +222,6 @@ func (r *Repo) Refresh(ctx context.Context) (*Info, error) {
 	if res.Status != keys.OK {
 		return nil, ErrForeign
 	}
-	r.op.Lock()
-	defer r.op.Unlock()
 	d, err := r.download(ctx, res.Key)
 	if err != nil {
 		return nil, err
@@ -252,7 +289,7 @@ func (r *Repo) save(key keys.Key, d *downloaded) (*Info, error) {
 	if v, ok := user["expire"]; ok && v > 0 {
 		info.Expire = &v
 	}
-	configsJSON, err := json.Marshal(d.raw)
+	configsJSON, err := json.Marshal(savedConfigs{FetchedAt: info.FetchedAt, Configs: d.raw})
 	if err != nil {
 		return nil, err
 	}

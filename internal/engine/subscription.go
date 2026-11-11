@@ -13,13 +13,21 @@ import (
 
 // KeyResult tells the window what happened to a submitted key.
 type KeyResult struct {
-	// "imported", "refreshed" or "confirm" (another key is in use: replace it?).
+	// "imported", "refreshed", "confirm" (another key is in use: replace it?) or "tv" (a TV's
+	// link: send it this computer's key?).
 	Result string `json:"result"`
 	URL    string `json:"url,omitempty"`
+	Code   string `json:"code,omitempty"`
 }
 
 // SubmitKey takes whatever was pasted or opened (a link, a message with a link, furkvpn://...).
 func (e *Engine) SubmitKey(text string) (*KeyResult, error) {
+	if code := keys.TVCode(text); code != "" {
+		if e.subs.Info() == nil {
+			return nil, ipc.Errorf("tv_need_key", "")
+		}
+		return &KeyResult{Result: "tv", Code: code}, nil
+	}
 	res := keys.Parse(text, e.cfg().AllowedSubscriptionHosts)
 	switch res.Status {
 	case keys.Empty:
@@ -75,7 +83,9 @@ func (e *Engine) importKey(key keys.Key) (*KeyResult, error) {
 }
 
 // RefreshSubscription downloads the subscription again.
-func (e *Engine) RefreshSubscription() error {
+func (e *Engine) RefreshSubscription() error { return e.refreshSubscription(false) }
+
+func (e *Engine) refreshSubscription(onlyIfStale bool) error {
 	e.mu.Lock()
 	if e.refreshing {
 		e.mu.Unlock()
@@ -92,8 +102,18 @@ func (e *Engine) RefreshSubscription() error {
 	}()
 	ctx, cancel := context.WithTimeout(e.ctx, 90*time.Second)
 	defer cancel()
-	if _, err := e.subs.Refresh(ctx); err != nil {
+	var info *subs.Info
+	var err error
+	if onlyIfStale {
+		info, err = e.subs.RefreshIfStale(ctx, e.settings.Get().SubscriptionUpdateHours)
+	} else {
+		info, err = e.subs.Refresh(ctx)
+	}
+	if err != nil {
 		return subscriptionError(err)
+	}
+	if info == nil {
+		return nil
 	}
 	go e.refreshAccount(true)
 	go e.reconnectIfConfigChanged()
@@ -103,7 +123,7 @@ func (e *Engine) RefreshSubscription() error {
 // refreshSubscriptionIfStale keeps the subscription fresh at the interval from the settings.
 func (e *Engine) refreshSubscriptionIfStale() {
 	if e.subs.IsStale(e.settings.Get().SubscriptionUpdateHours, time.Now()) {
-		if err := e.RefreshSubscription(); err != nil {
+		if err := e.refreshSubscription(true); err != nil {
 			e.log.Printf("subscription refresh: %v", err)
 		}
 	}

@@ -3,11 +3,13 @@
 // FurkVPN.exe is the app's window and tray icon, run by the user. Everything that needs
 // administrator rights (the VPN itself) happens in FurkVPNService.exe, which it talks to over a
 // named pipe. "--tray" starts it hidden (at sign-in); a furkvpn:// link or a settings file in the
-// arguments is passed to the running copy; "--restore-proxy" (for the installer) only puts back
-// the system proxy the app has set, see sysproxy.go.
+// arguments is passed to the running copy; "--connect", "--disconnect" and "--toggle" turn the
+// VPN on or off without the window (shortcuts, the taskbar's tasks); "--restore-proxy" (for the
+// installer) only puts back the system proxy the app has set, see sysproxy.go.
 package main
 
 import (
+	"encoding/json"
 	"io/fs"
 	"log"
 	"os"
@@ -60,11 +62,15 @@ func main() {
 		OnBeforeClose:     app.beforeClose,
 		OnShutdown:        app.shutdown,
 		Bind:              []interface{}{app},
+		// As JSON text: Wails hands the interface `new Error(value)`, and an object would turn
+		// into "[object Object]" there, losing the code the interface picks its message by.
 		ErrorFormatter: func(err error) any {
+			value := map[string]string{"code": "failed", "message": err.Error()}
 			if e, ok := err.(*ipc.Error); ok {
-				return map[string]string{"code": e.Code, "message": e.Message}
+				value = map[string]string{"code": e.Code, "message": e.Message}
 			}
-			return map[string]string{"code": "failed", "message": err.Error()}
+			b, _ := json.Marshal(value)
+			return string(b)
 		},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId:               "furkvpn-ui-2f6a1c7e",

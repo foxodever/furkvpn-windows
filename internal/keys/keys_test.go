@@ -96,3 +96,30 @@ func TestWildcardMatching(t *testing.T) {
 		}
 	}
 }
+
+func TestKeyAfterOtherLinksInAMessage(t *testing.T) {
+	message := "Бот: https://t.me/FurkVPNbot\nСайт: furkvpn.info\nВаш ключ: https://sub.furkvpn.com/abcDEF123456XYZ0"
+	if got := ok(t, message).URL; got != "https://sub.furkvpn.com/abcDEF123456XYZ0" {
+		t.Fatal(got)
+	}
+	if r := Parse("https://t.me/FurkVPNbot https://example.com/x", allowed); r.Status != Foreign {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestTVCodes(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://furkapp.net/tv/ABC123": "ABC123", " furkvpn://tv/abc-123/ ": "ABC123",
+		"https://furkapp.net/tv/": "", "https://evil.example/tv/ABC123": "", "https://sub.furkvpn.com/abcDEF123456": "",
+	} {
+		if got := TVCode(in); got != want {
+			t.Errorf("TVCode(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{"abc 123": "ABC123", "ABC-123": "ABC123", "ABC12": "", "ABC1234": "", "AB!123": "",
+		"3РГ ЯОА": "3HUZJF", "3рг-яоа": "3HUZJF"} {
+		if got := NormalizeTVCode(in); got != want {
+			t.Errorf("NormalizeTVCode(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

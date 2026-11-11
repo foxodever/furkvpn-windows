@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -113,5 +114,70 @@ func TestMeaningfulErrors(t *testing.T) {
 	defer redirect.Close()
 	if _, err := repo(t).Import(context.Background(), keyFor(t, redirect, "/abc")); err == nil {
 		t.Fatal("a redirect outside our domains must fail")
+	}
+}
+
+// The two files are written one after the other: configs from another download must not be
+// paired with the list by position. The key stays and the subscription is due right away.
+func TestConfigsFromAnotherDownloadAreNotUsed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+	defer server.Close()
+	r := repo(t)
+	info, err := r.Import(context.Background(), keyFor(t, server, "/abc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(content string) {
+		if err := os.WriteFile(r.configsPath(), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	configs := `[{"remarks":"a"},{"remarks":"b"}]`
+
+	write(`{"fetchedAt":1,"configs":` + configs + `}`)
+	other := Open(Options{Dir: r.dir})
+	if other.Info() == nil || other.Info().URL != info.URL || other.ConfigFor(info.Servers[0].Key) != nil {
+		t.Fatal("configs of another download used, or the key lost")
+	}
+	if !other.IsStale(24, time.Now()) {
+		t.Fatal("not due for a refresh")
+	}
+
+	write(configs) // the format before 1.3.0
+	if old := Open(Options{Dir: r.dir}); old.ConfigFor(info.Servers[0].Key) == nil || old.IsStale(24, time.Now()) {
+		t.Fatal("the old format is not read")
+	}
+}
+
+// A refresh that waited behind an import downloads the new key, not the one it was asked with.
+func TestRefreshAfterImportKeepsTheNewKey(t *testing.T) {
+	// Over TLS: a refresh parses the stored key again, and keys are https.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+	defer server.Close()
+	r := repo(t)
+	r.do = func(ctx context.Context, req *http.Request) (*http.Response, error) { return server.Client().Do(req) }
+	if _, err := r.Import(context.Background(), keyFor(t, server, "/old")); err != nil {
+		t.Fatal(err)
+	}
+	r.op.Lock() // an import in progress
+	done := make(chan *Info)
+	go func() {
+		info, err := r.Refresh(context.Background())
+		if err != nil {
+			t.Error(err)
+		}
+		done <- info
+	}()
+	time.Sleep(50 * time.Millisecond)
+	d, err := r.download(context.Background(), keyFor(t, server, "/new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.save(keyFor(t, server, "/new"), d); err != nil {
+		t.Fatal(err)
+	}
+	r.op.Unlock()
+	if info := <-done; info == nil || !strings.HasSuffix(info.URL, "/new") || !strings.HasSuffix(r.Info().URL, "/new") {
+		t.Fatalf("refresh brought back %v", info)
 	}
 }

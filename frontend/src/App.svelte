@@ -11,7 +11,7 @@
   import Spinner from "./components/Spinner.svelte";
   import Icon from "./components/Icon.svelte";
   import Logo from "./components/Logo.svelte";
-  import { app, ui, screen, back, confirmReplace, applyImport, inspectSettingsFile } from "./lib/state.svelte";
+  import { app, ui, screen, back, confirmReplace, applyImport, inspectSettingsFile, sendTvKey } from "./lib/state.svelte";
   import { system } from "./lib/bridge";
   import { t } from "./lib/i18n";
 
@@ -131,6 +131,23 @@
 {#if ui.importing}
   <Dialog persistent>
     <div class="row gap loading"><Spinner size={28} /><span class="body-large">{t("importing")}</span></div>
+  </Dialog>
+{/if}
+
+{#if ui.tvSend}
+  <Dialog title={t("tv_send_title")} onclose={() => (ui.tvSend = null)}>
+    {t("tv_send_text", ui.tvSend.slice(0, 3) + " " + ui.tvSend.slice(3))}
+    {#snippet actions()}
+      <button class="btn text interactive" onclick={() => (ui.tvSend = null)}>{t("action_cancel")}</button>
+      <button
+        class="btn text interactive"
+        onclick={() => {
+          const code = ui.tvSend; // read before the dialog closes
+          ui.tvSend = null;
+          if (code) sendTvKey(code);
+        }}>{t("tv_send_action")}</button
+      >
+    {/snippet}
   </Dialog>
 {/if}
 

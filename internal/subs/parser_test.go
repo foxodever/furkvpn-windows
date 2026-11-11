@@ -79,3 +79,20 @@ func TestHeaders(t *testing.T) {
 		t.Fatalf("%v", info)
 	}
 }
+
+func TestHysteriaServer(t *testing.T) {
+	// The shape Remnawave gives a Hysteria 2 host in the Xray JSON subscription.
+	configs, err := ParseConfigs([]byte(`[{"remarks":"🇩🇪 Германия Hysteria","outbounds":[
+	  {"tag":"proxy","protocol":"hysteria","settings":{"address":"de.net","port":443,"version":2},
+	   "streamSettings":{"network":"hysteria","hysteriaSettings":{"version":2,"auth":"x"},"security":"tls",
+	     "tlsSettings":{"serverName":"de.net","alpn":["h3"]},
+	     "finalmask":{"udp":[{"type":"salamander","settings":{"password":"y"}}]}}},
+	  {"tag":"direct","protocol":"freedom"}]}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := Entries(configs)
+	if len(entries) != 1 || entries[0].Kind != KindServer || entries[0].Title != "Германия Hysteria" || entries[0].Summary != "HYSTERIA2 · QUIC" {
+		t.Fatalf("%+v", entries)
+	}
+}

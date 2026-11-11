@@ -247,3 +247,41 @@ func TestCachedConfigOfAnotherVersionIsStale(t *testing.T) {
 		}
 	}
 }
+
+func TestHeaderSafe(t *testing.T) {
+	if got := headerSafe(" Huawei 华为 MateBook™ X\t"); got != "Huawei  MateBook X" {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestSendKeyToTV(t *testing.T) {
+	var sent map[string]string
+	server := testServer(t)
+	server.Config.Handler.(*http.ServeMux).HandleFunc("/api/v1/tv/send", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&sent)
+		if sent["code"] != "ABC123" {
+			http.Error(w, `{"error":"not_found"}`, 404)
+			return
+		}
+		fmt.Fprint(w, `{"ok":true}`)
+	})
+	e, _ := newEngine(t, server)
+	if r, err := e.SubmitKey("https://furkapp.net/tv/ABC123"); err == nil || !strings.Contains(err.Error(), "tv_need_key") {
+		t.Fatalf("without a key: %+v %v", r, err)
+	}
+	if _, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := e.SubmitKey("furkvpn://tv/abc-123"); err != nil || r.Result != "tv" || r.Code != "ABC123" {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if err := e.SendTVKey("abc 123"); err != nil || !strings.HasSuffix(sent["key"], "/abcDEF123456") {
+		t.Fatalf("%v %v", err, sent)
+	}
+	if err := e.SendTVKey("ZZZ999"); err == nil || !strings.Contains(err.Error(), "tv_no_code") {
+		t.Fatalf("expired code: %v", err)
+	}
+	if err := e.SendTVKey("AB"); err == nil || !strings.Contains(err.Error(), "tv_bad_code") {
+		t.Fatalf("bad code: %v", err)
+	}
+}

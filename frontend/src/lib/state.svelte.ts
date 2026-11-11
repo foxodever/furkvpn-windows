@@ -54,6 +54,8 @@ export const ui = $state({
   keyError: null as StringKey | null,
   importing: false,
   confirmReplace: null as string | null,
+  /** A TV's link was opened: send it this computer's key? (its code) */
+  tvSend: null as string | null,
   pendingImport: null as { file: SettingsImport; content: string } | null,
   autostart: false,
   dragging: false,
@@ -116,6 +118,7 @@ const keyErrors: Record<string, StringKey> = {
   bad_format: "error_bad_format",
   no_servers: "error_no_servers",
   download: "error_download",
+  tv_need_key: "tv_send_need_key",
 };
 
 function keyError(e: unknown): StringKey {
@@ -126,9 +129,11 @@ export async function submitKey(text: string | null | undefined) {
   if (ui.importing) return;
   ui.importing = true;
   try {
-    const r = await call<{ result: string; url: string }>("submitKey", { text: text ?? "" });
+    const r = await call<{ result: string; url: string; code?: string }>("submitKey", { text: text ?? "" });
     if (r.result === "confirm") {
       ui.confirmReplace = r.url;
+    } else if (r.result === "tv") {
+      ui.tvSend = r.code ?? null;
     } else {
       if (r.result === "imported") snackbar(t("key_added"));
       if (r.result === "refreshed") snackbar(t("servers_updated"));
@@ -154,6 +159,24 @@ export async function confirmReplace() {
     ui.keyError = keyError(e);
   } finally {
     ui.importing = false;
+  }
+}
+
+const tvErrors: Record<string, StringKey> = {
+  tv_no_code: "tv_send_no_code",
+  tv_too_many: "tv_send_too_many",
+  tv_bad_code: "tv_bad_code",
+  tv_need_key: "tv_send_need_key",
+  foreign_key: "error_foreign_key",
+};
+
+/** Sends this computer's key to the TV showing code (Settings → «Подключить телевизор», or its link). */
+export async function sendTvKey(code: string) {
+  try {
+    await call("sendTvKey", { code });
+    snackbar(t("tv_sent"));
+  } catch (e) {
+    snackbar(t(e instanceof CallError ? (tvErrors[e.code] ?? "tv_send_failed") : "tv_send_failed"));
   }
 }
 

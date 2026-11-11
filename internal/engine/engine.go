@@ -76,6 +76,10 @@ type Engine struct {
 	wl              whitelistView
 	pings           map[string]Ping
 	pinging         bool
+	pingRun         int                // the current "ping all"; a restart starts a new one
+	pingCancel      context.CancelFunc // stops the current run's queue
+	measuring       map[string]bool    // servers being measured right now (queued ones aren't)
+	pingLimit       chan struct{}      // six at a time, shared by restarted runs
 	upd             updateView
 	refreshing      bool
 
@@ -112,6 +116,8 @@ func New(ctx context.Context, opt Options) *Engine {
 		log:            opt.Log,
 		connlog:        connlog.New(),
 		pings:          map[string]Ping{},
+		measuring:      map[string]bool{},
+		pingLimit:      make(chan struct{}, 6),
 		dirty:          make(chan struct{}, 1),
 		published:      map[string]string{},
 		dirtySlices:    map[string]bool{},
@@ -203,7 +209,18 @@ func (e *Engine) active() bool {
 // --- HTTP ---------------------------------------------------------------------------------
 
 func userAgent() string {
-	return "FurkVPN/" + version.Name + " Windows/" + sysinfo.OSVersion()
+	return headerSafe("FurkVPN/" + version.Name + " Windows/" + sysinfo.OSVersion())
+}
+
+// headerSafe keeps printable ASCII: a device name like "华为 …" or "Box™" would otherwise go into
+// a header as is (the Android app crashed on such names).
+func headerSafe(value string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r < ' ' || r > '~' {
+			return -1
+		}
+		return r
+	}, value))
 }
 
 func (e *Engine) newClient(bypass bool) *http.Client {
@@ -263,8 +280,8 @@ func (e *Engine) deviceHeaders() http.Header {
 	return http.Header{
 		"X-Hwid":         {e.deviceID()},
 		"X-Device-Os":    {"Windows"},
-		"X-Ver-Os":       {sysinfo.OSVersion()},
-		"X-Device-Model": {sysinfo.DeviceModel()},
+		"X-Ver-Os":       {headerSafe(sysinfo.OSVersion())},
+		"X-Device-Model": {headerSafe(sysinfo.DeviceModel())},
 	}
 }
 

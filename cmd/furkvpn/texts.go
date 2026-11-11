@@ -22,6 +22,8 @@ var texts = map[string][2]string{
 	"status_offline":    {"Служба не отвечает", "The service is not responding"},
 	"settings_file":     {"Файл настроек FurkVPN", "FurkVPN settings file"},
 	"program":           {"Программа", "Program"},
+	"task_connect":      {"Подключить VPN", "Connect VPN"},
+	"task_disconnect":   {"Отключить VPN", "Disconnect VPN"},
 }
 
 func (a *App) text(key string) string {

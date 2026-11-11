@@ -169,7 +169,8 @@ func (e *Engine) probe(ctx context.Context, u string) probeView {
 		view.Error = "other"
 		return view
 	}
-	req.Header.Set("User-Agent", userAgent())
+	// Without the app's User-Agent: these requests go to vk.ru, ya.ru and Google from the real
+	// address, outside the VPN, and must not tell them it is FurkVPN.
 	start := time.Now()
 	resp, err := e.probeClient().Do(req)
 	if err != nil {

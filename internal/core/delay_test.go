@@ -72,11 +72,11 @@ func TestServersResolvedDirectlyNeedsAList(t *testing.T) {
 	}
 }
 
-func TestWithServersResolvedDirectlyKeepsNumbers(t *testing.T) {
+func TestWithFixesKeepsNumbers(t *testing.T) {
 	in := `{"dns": {"servers": [{"address": "77.88.8.8", "domains": ["full:a.net"]}]}, "outbounds": [` +
 		`{"protocol": "vless", "settings": {"vnext": [{"address": "a.net", "port": 443}]}},` +
 		`{"protocol": "vless", "settings": {"vnext": [{"address": "b.net", "port": 443}]}, "streamSettings": {"xhttpSettings": {"extra": {"scMaxEachPostBytes": 1000000, "big": 12345678901234567890}}}}]}`
-	out := string(withServersResolvedDirectly([]byte(in)))
+	out := string(withFixes([]byte(in)))
 	var cfg map[string]any
 	dec := json.NewDecoder(bytesReader(out))
 	dec.UseNumber()
@@ -87,7 +87,7 @@ func TestWithServersResolvedDirectlyKeepsNumbers(t *testing.T) {
 	if extra["scMaxEachPostBytes"].(json.Number) != "1000000" || extra["big"].(json.Number) != "12345678901234567890" {
 		t.Fatalf("numbers changed: %v", extra)
 	}
-	if string(withServersResolvedDirectly([]byte(out))) != out {
+	if string(withFixes([]byte(out))) != out {
 		t.Fatal("second pass changed the config")
 	}
 }

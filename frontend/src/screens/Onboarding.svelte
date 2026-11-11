@@ -10,11 +10,10 @@
   import { t } from "../lib/i18n";
 
   let { canGoBack = false }: { canGoBack?: boolean } = $props();
-  let showSite = $state(false);
   let showManual = $state(false);
-  let emailTapped = $state(false);
   let manual = $state("");
 
+  // The account page on the site: its "Войти в приложение FurkVPN" button adds the key here.
   const installUrl = $derived(`https://${app.config.site.domain}/dashboard/install`);
 </script>
 
@@ -35,7 +34,7 @@
           {t("onboarding_telegram")}
         </button>
         <div class="body-small muted center tg-hint">{t("onboarding_telegram_hint")}</div>
-        <button class="btn tonal large wide interactive" onclick={() => (showSite = true)}>
+        <button class="btn tonal large wide interactive" onclick={() => system.openURL(installUrl)}>
           <Icon name="language" />
           {t("onboarding_site")}
         </button>
@@ -48,30 +47,6 @@
     </div>
   </div>
 </div>
-
-{#if showSite}
-  <Dialog sheet title={t("onboarding_site")} onclose={() => (showSite = false)}>
-    <div class="body-medium muted hint">{t("site_login_hint")}</div>
-    <button
-      class="list-item three interactive"
-      onclick={() => {
-        system.openURL(installUrl);
-        showSite = false;
-      }}
-    >
-      <span class="lead primary"><Icon name="open_in_browser" /></span>
-      <span class="grow col">
-        <span class="body-large">{t("site_login_browser")}</span>
-        <span class="body-medium muted">{t("site_login_browser_hint", app.config.site.domain)}</span>
-      </span>
-    </button>
-    <button class="list-item interactive" onclick={() => (emailTapped = true)}>
-      <span class="lead primary"><Icon name="mail" /></span>
-      <span class="body-large grow">{t("site_login_email")}</span>
-      {#if emailTapped}<span class="pill label-large" aria-live="polite">{t("in_development")}</span>{/if}
-    </button>
-  </Dialog>
-{/if}
 
 {#if showManual}
   <Dialog title={t("manual_title")} onclose={() => (showManual = false)}>
@@ -123,6 +98,7 @@
   }
   .title {
     margin: 36px 0 8px;
+    font-weight: 600;
   }
   .buttons {
     display: flex;
@@ -135,17 +111,5 @@
   }
   .center {
     text-align: center;
-  }
-  .hint {
-    padding: 0 24px 8px;
-  }
-  .list-item {
-    padding: 8px 24px;
-  }
-  .pill {
-    padding: 4px 10px;
-    border-radius: 8px;
-    background: var(--secondary-container);
-    color: var(--on-secondary-container);
   }
 </style>

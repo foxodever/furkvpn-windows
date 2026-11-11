@@ -71,7 +71,7 @@
   <div class="header">
     <span class="title-large grow">{t("servers_title")}</span>
     {@render headerActions?.()}
-    <button class="icon-btn interactive" title={t("servers_test")} disabled={app.pings.pinging} onclick={() => act("testPings")}>
+    <button class="icon-btn interactive" title={t("servers_test")} onclick={() => act("testPings")}>
       {#if app.pings.pinging}<Spinner size={20} stroke={2} />{:else}<Icon name="speed" />{/if}
     </button>
     <button

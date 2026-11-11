@@ -175,6 +175,10 @@ func AddressOf(outbound jsonx.Object) string {
 }
 
 func summaryOf(outbound jsonx.Object) string {
+	// Always QUIC with TLS; "hysteria" is both its protocol and its transport.
+	if jsonx.S(outbound, "protocol") == "hysteria" {
+		return "HYSTERIA2 · QUIC"
+	}
 	stream := jsonx.Obj(outbound["streamSettings"])
 	var parts []string
 	if p, ok := jsonx.Str(outbound, "protocol"); ok {

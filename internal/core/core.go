@@ -69,7 +69,7 @@ func Start(configJSON []byte) error {
 	if instance != nil {
 		return errors.New("xray is already running")
 	}
-	cfg, err := loadConfig(withServersResolvedDirectly(configJSON))
+	cfg, err := loadConfig(withFixes(configJSON))
 	if err != nil {
 		return err
 	}

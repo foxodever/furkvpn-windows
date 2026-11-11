@@ -59,10 +59,25 @@ func Parse(input string, allowedHosts []string) Result {
 	if text == "" {
 		return Result{Status: Empty}
 	}
-	candidate, ok := findURL(text)
-	if !ok {
+	links := findURLs(text)
+	if len(links) == 0 {
 		return Result{Status: NotALink}
 	}
+	// A message may have other links before the key (t.me, the site): the first key wins.
+	var first Result
+	for i, link := range links {
+		r := parseLink(link, allowedHosts)
+		if r.Status == OK {
+			return r
+		}
+		if i == 0 {
+			first = r
+		}
+	}
+	return first
+}
+
+func parseLink(candidate string, allowedHosts []string) Result {
 	for range 3 {
 		inner, ok := unwrap(candidate)
 		if !ok {
@@ -112,14 +127,56 @@ func HostAllowed(host string, patterns []string) bool {
 	return false
 }
 
-func findURL(text string) (string, bool) {
-	if m := urlRegex.FindString(text); m != "" {
-		return strings.TrimRight(m, ".,)]!?;"), true
+func findURLs(text string) []string {
+	var links []string
+	for _, m := range urlRegex.FindAllString(text, -1) {
+		links = append(links, strings.TrimRight(m, ".,)]!?;"))
 	}
-	if m := bareHostRegex.FindString(text); m != "" {
-		return "https://" + strings.TrimRight(m, ".,)]!?;"), true
+	if len(links) > 0 {
+		return links
 	}
-	return "", false
+	for _, m := range bareHostRegex.FindAllString(text, -1) {
+		links = append(links, "https://"+strings.TrimRight(m, ".,)]!?;"))
+	}
+	return links
+}
+
+// A TV with FurkVPN shows furkapp.net/tv/<code> as a QR code and the code itself; the computer
+// sends its key for that code (POST /api/v1/tv/send).
+var tvLink = regexp.MustCompile(`(?i)^(?:https://furkapp\.net/tv/|furkvpn://tv/)([a-z0-9]{3}-?[a-z0-9]{3})/?$`)
+
+// TVCode returns the code of a TV's link ("https://furkapp.net/tv/ABC123", "furkvpn://tv/abc-123")
+// as "ABC123", or "" when text is not such a link.
+func TVCode(text string) string {
+	m := tvLink.FindStringSubmatch(strings.TrimSpace(text))
+	if m == nil {
+		return ""
+	}
+	return strings.ToUpper(strings.ReplaceAll(m[1], "-", ""))
+}
+
+var tvCode = regexp.MustCompile(`^[A-Z0-9]{6}$`)
+
+// russianLayout maps the letters of the Russian keyboard layout to the Latin ones on the same keys:
+// a code typed off the TV's screen with the Russian layout on ("РГ ЯОА") is still the code.
+var russianLayout = func() *strings.Replacer {
+	ru, en := []rune("йцукенгшщзфывапролдячсмить"), []rune("qwertyuiopasdfghjklzxcvbnm")
+	var pairs []string
+	for i := range ru {
+		pairs = append(pairs, string(ru[i]), string(en[i]), strings.ToUpper(string(ru[i])), string(en[i]))
+	}
+	return strings.NewReplacer(pairs...)
+}()
+
+// NormalizeTVCode turns what was typed off the TV's screen ("abc 123", "ABC-123", or with the
+// Russian layout on) into "ABC123", or "" when it can't be a code.
+func NormalizeTVCode(text string) string {
+	text = russianLayout.Replace(strings.TrimSpace(text))
+	code := strings.ToUpper(strings.NewReplacer(" ", "", "-", "", "\t", "").Replace(text))
+	if !tvCode.MatchString(code) {
+		return ""
+	}
+	return code
 }
 
 // unwrap extracts the inner key from import wrappers; ok is false when link is not a wrapper.

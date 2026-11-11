@@ -139,7 +139,7 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 	main := localInbound(opt.LocalPort, sniffing)
 	if opt.Tun != nil {
 		mainTag = TunTag
-		main = tunInbound(*opt.Tun, sniffing)
+		main = tunInbound(*opt.Tun, opt.Routing != nil && opt.Routing.LANDirect, sniffing)
 	}
 	inbounds := []any{main}
 	if s := opt.Share; s != nil {
@@ -278,15 +278,16 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 
 // tunInbound is Xray's own TUN (Wintun). It also sets up the system routes, and keeps DNS, and
 // IPv6 when that doesn't go into it, from leaving past it.
-func tunInbound(t Tun, sniffing jsonx.Object) jsonx.Object {
+func tunInbound(t Tun, lanDirect bool, sniffing jsonx.Object) jsonx.Object {
 	mtu := t.MTU
 	if mtu == 0 {
 		mtu = MTU
 	}
-	gateway, routes := []any{TunAddress4}, []any{"0.0.0.0/0"}
+	gateway := []any{TunAddress4}
 	if t.IPv6 {
-		gateway, routes = append(gateway, TunAddress6), append(routes, "::/0")
+		gateway = append(gateway, TunAddress6)
 	}
+	routes := tunRoutes(t.IPv6, lanDirect)
 	settings := jsonx.Object{
 		"name":                   AdapterName,
 		"desc":                   AdapterName,

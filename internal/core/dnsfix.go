@@ -6,11 +6,15 @@ import (
 	"furkvpn/internal/jsonx"
 )
 
-// withServersResolvedDirectly returns configJSON with resolveServersDirectly applied, or
-// unchanged when there is nothing to add.
-func withServersResolvedDirectly(configJSON []byte) []byte {
+// withFixes returns configJSON with resolveServersDirectly and upgradeHysteria applied, or
+// unchanged when neither changes anything.
+func withFixes(configJSON []byte) []byte {
 	cfg, err := jsonx.ParseObject(configJSON)
-	if err != nil || !resolveServersDirectly(cfg) {
+	if err != nil {
+		return configJSON
+	}
+	resolved := resolveServersDirectly(cfg)
+	if upgraded := upgradeHysteria(cfg); !resolved && !upgraded {
 		return configJSON
 	}
 	out, err := jsonx.Marshal(cfg)

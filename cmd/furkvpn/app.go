@@ -61,7 +61,7 @@ func newApp(args []string) *App {
 		state:       map[string]json.RawMessage{},
 	}
 	for _, arg := range args {
-		if arg == "--tray" {
+		if arg == "--tray" || vpnCommands[arg] != "" {
 			a.startHidden = true
 		}
 	}
@@ -77,6 +77,13 @@ func (a *App) startup(ctx context.Context) {
 	// unless the VPN turns out to be on.
 	a.syncSystemProxy()
 	go a.serviceLoop()
+	go func() {
+		exe, _ := os.Executable()
+		tasks := []jumpTask{{a.text("task_connect"), "--connect"}, {a.text("task_disconnect"), "--disconnect"}}
+		if err := setTaskbarTasks(exe, tasks); err != nil {
+			logf("taskbar tasks: %v", err)
+		}
+	}()
 	a.tray = startTray(a)
 }
 
@@ -154,7 +161,7 @@ func (a *App) secondInstance(data options.SecondInstanceData) {
 	a.handleArgs(data.Args)
 	tray := false
 	for _, arg := range data.Args {
-		if arg == "--tray" {
+		if arg == "--tray" || vpnCommands[arg] != "" {
 			tray = true
 		}
 	}
@@ -163,9 +170,17 @@ func (a *App) secondInstance(data options.SecondInstanceData) {
 	}
 }
 
+// vpnCommands are the arguments that turn the VPN on or off without showing the window: for
+// shortcuts, the taskbar's tasks, Task Scheduler and hotkeys (like the Android app's shortcuts).
+var vpnCommands = map[string]string{"--connect": "connect", "--disconnect": "disconnect", "--toggle": "toggle"}
+
 func (a *App) handleArgs(args []string) {
 	for _, arg := range args {
 		lower := strings.ToLower(arg)
+		if command := vpnCommands[lower]; command != "" {
+			go a.vpnCommand(command)
+			continue
+		}
 		switch {
 		case strings.HasPrefix(lower, "furkvpn:"):
 			link := arg
@@ -336,6 +351,39 @@ func (a *App) trayState() (status, server string, online bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.vpn.Status, a.names[a.vpn.ServerKey], a.online
+}
+
+// vpnCommand runs "connect", "disconnect" or "toggle" once the service has told its state (the
+// app may have just been started by the command).
+func (a *App) vpnCommand(command string) {
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		a.mu.Lock()
+		client, status := a.client, a.vpn.Status
+		a.mu.Unlock()
+		if client != nil && status != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			logf("%s: the service did not answer", command)
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	logf("command: %s", command)
+	if command == "toggle" {
+		a.toggleVPN()
+		return
+	}
+	a.mu.Lock()
+	client := a.client
+	a.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := client.Call(ctx, command, nil, nil); err != nil {
+		logf("%s: %v", command, err)
+		a.show() // no key yet, for example: the window explains
+	}
 }
 
 func (a *App) toggleVPN() {

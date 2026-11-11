@@ -109,3 +109,18 @@ func TestBadEntriesAreRejected(t *testing.T) {
 		t.Fatalf("%q %q", valid, invalid)
 	}
 }
+
+// Like the Android app since 1.8.0: what Xray (Go's RE2 and IP parser) can't take is refused.
+func TestRE2AndLeadingZeros(t *testing.T) {
+	for _, bad := range []string{`regexp:^(?!ads).*\.com$`, `regexp:(?<=x)y`, `regexp:(a)\1`, `regexp:a*+`} {
+		if got, ok := Normalize(bad); ok {
+			t.Errorf("%s accepted as %q", bad, got)
+		}
+	}
+	if got, ok := Normalize(`regexp:^.*\.ru$`); !ok || got != `regexp:^.*\.ru$` {
+		t.Errorf("good regexp: %q %v", got, ok)
+	}
+	if IsIPOrCIDR("010.1.1.1") || !IsIPOrCIDR("10.0.0.0/8") {
+		t.Error("leading zeros")
+	}
+}

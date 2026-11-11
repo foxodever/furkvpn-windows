@@ -68,6 +68,12 @@ func (e *Engine) Handle(ctx context.Context, c *ipc.Conn, method string, params 
 			return nil, err
 		}
 		return e.SubmitKey(p.Text)
+	case "sendTvKey":
+		p, err := decode[struct{ Code string }](params)
+		if err != nil {
+			return nil, err
+		}
+		return nil, e.SendTVKey(p.Code)
 	case "importKey":
 		p, err := decode[struct{ URL string }](params)
 		if err != nil {
