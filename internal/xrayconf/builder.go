@@ -8,6 +8,7 @@ package xrayconf
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	"furkvpn/internal/jsonx"
@@ -106,6 +107,28 @@ var nonLocalSources = []string{
 	"::/1", "8000::/2", "c000::/3", "e000::/4", "f000::/5", "f800::/6", "fe00::/9", "fec0::/10", "ff00::/8",
 }
 
+// DNSLevel is the policy level of the DNS outbound, idle for DNSIdleSeconds at most. Xray keeps
+// every DNS query of a program (each comes from a port of its own) as a connection until it has
+// been idle for the level's connIdle: 300 seconds by default, and with the way it counts, up to
+// twice that. At a few queries a second that is thousands of finished queries held in memory.
+// Their own level ends them in seconds and leaves the timeout of everything else as it is.
+const (
+	DNSLevel       = 53
+	DNSIdleSeconds = 10
+)
+
+// withDNSLevel puts a DNS outbound on DNSLevel unless the panel gave it a level of its own.
+func withDNSLevel(ob jsonx.Object) jsonx.Object {
+	settings := jsonx.Clone(jsonx.Obj(ob["settings"]))
+	if _, ok := settings["userLevel"]; ok {
+		return ob
+	}
+	settings["userLevel"] = DNSLevel
+	ob = jsonx.Clone(ob)
+	ob["settings"] = settings
+	return ob
+}
+
 // Sections of a subscription config the app never runs: they could listen on ports, expose
 // control APIs or write files (the service runs as SYSTEM).
 var droppedSections = []string{"remarks", "remnawave", "api", "metrics", "reverse", "transport"}
@@ -171,6 +194,11 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 	if dnsTag == "" && opt.Tun != nil {
 		dnsTag = DNSOutTag
 		outbounds = append(outbounds, jsonx.Object{"tag": DNSOutTag, "protocol": "dns"})
+	}
+	for i, o := range outbounds {
+		if ob := jsonx.Obj(o); jsonx.S(ob, "protocol") == "dns" {
+			outbounds[i] = withDNSLevel(ob)
+		}
 	}
 	if opt.Share != nil {
 		outbounds = append(outbounds, jsonx.Object{"tag": ShareBlockTag, "protocol": "blackhole"})
@@ -261,6 +289,11 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 	system["statsInboundUplink"] = true
 	system["statsInboundDownlink"] = true
 	policy["system"] = system
+	levels := jsonx.Clone(jsonx.Obj(policy["levels"]))
+	if _, ok := levels[strconv.Itoa(DNSLevel)]; !ok {
+		levels[strconv.Itoa(DNSLevel)] = jsonx.Object{"connIdle": DNSIdleSeconds}
+	}
+	policy["levels"] = levels
 	out["policy"] = policy
 
 	// Never write visited addresses anywhere.

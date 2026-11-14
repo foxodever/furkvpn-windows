@@ -29,6 +29,11 @@ func (e *Engine) SubmitKey(text string) (*KeyResult, error) {
 		return &KeyResult{Result: "tv", Code: code}, nil
 	}
 	res := keys.Parse(text, e.cfg().AllowedSubscriptionHosts)
+	// The settings may not have come yet (a fresh install, furkapp.net slow to answer) or may
+	// predate the key's domain: fetch them again before calling the key foreign.
+	if res.Status == keys.Foreign && e.recheckConfig() {
+		res = keys.Parse(text, e.cfg().AllowedSubscriptionHosts)
+	}
 	switch res.Status {
 	case keys.Empty:
 		return nil, ipc.Errorf("empty", "")

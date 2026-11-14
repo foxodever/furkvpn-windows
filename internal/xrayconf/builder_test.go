@@ -1,8 +1,10 @@
 package xrayconf
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"furkvpn/internal/jsonx"
@@ -298,5 +300,31 @@ func TestWithoutTunProgramsUseALocalProxy(t *testing.T) {
 	}
 	if !slices.Contains(Counters("uplink"), "inbound>>>local-in>>>traffic>>>uplink") {
 		t.Fatal("the proxy's traffic is counted")
+	}
+}
+
+// Xray keeps every DNS query of a program as a connection for the idle timeout of its policy
+// level, minutes by default: the DNS outbound gets a level of its own with seconds.
+func TestDNSQueriesAreNotKeptForMinutes(t *testing.T) {
+	dnsLevel := func(cfg jsonx.Object) string {
+		for _, o := range jsonx.Objects(cfg["outbounds"]) {
+			if jsonx.S(o, "protocol") == "dns" {
+				return fmt.Sprint(jsonx.Obj(o["settings"])["userLevel"])
+			}
+		}
+		return "no DNS outbound"
+	}
+	idle := func(cfg jsonx.Object, level string) string {
+		return fmt.Sprint(jsonx.Obj(jsonx.Obj(jsonx.Obj(cfg["policy"])["levels"])[level])["connIdle"])
+	}
+	cfg := build(t, raw, Options{Tun: tun})
+	if level := dnsLevel(cfg); level != "53" || idle(cfg, level) != "10" {
+		t.Fatalf("level %s, idle %s", level, idle(cfg, level))
+	}
+	// What the panel set itself stays.
+	own := strings.Replace(raw, `"outbounds":[`, `"policy":{"levels":{"0":{"connIdle":120}}},"outbounds":[{"tag":"dns","protocol":"dns","settings":{"userLevel":7}},`, 1)
+	cfg = build(t, own, Options{Tun: tun})
+	if level := dnsLevel(cfg); level != "7" || idle(cfg, "0") != "120" {
+		t.Fatalf("the panel's own: level %s, idle of level 0 %s", level, idle(cfg, "0"))
 	}
 }

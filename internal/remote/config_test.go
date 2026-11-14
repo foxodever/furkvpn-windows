@@ -54,7 +54,7 @@ func TestBrokenListsFallBack(t *testing.T) {
 		"serverFilters":[{"emoji":"","title":"x"},{"emoji":"🎮","title":"Игровой"}],"delayTestUrl":"",
 		"whitelist":{"lteServer":["LTE"]},
 		"windows":{"update":{"versionCode":3,"versionName":"1.0.2","url":"http://insecure"},"defaultExcludedApps":[" max.exe ",""]}}`))
-	if len(cfg.AllowedSubscriptionHosts) != 2 || len(cfg.Support) != 3 || len(cfg.Links) != 0 {
+	if len(cfg.AllowedSubscriptionHosts) != len(Defaults().AllowedSubscriptionHosts) || len(cfg.Support) != 3 || len(cfg.Links) != 0 {
 		t.Fatalf("%+v", cfg)
 	}
 	if len(cfg.ServerFilters) != 1 || cfg.DelayTestURL == "" {

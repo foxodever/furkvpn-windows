@@ -63,7 +63,7 @@ func measureAuto(cfg jsonx.Object, testURL string, timeout time.Duration) (int64
 	if err != nil {
 		return -1, err
 	}
-	defer inst.Close()
+	defer closeInstance(inst)
 	ms, err := httpDelay(inst, "", testURL, timeout)
 	if err != nil {
 		ms, err = httpDelay(inst, "", testURL, timeout)
@@ -170,8 +170,9 @@ func startTestInstance(cfg jsonx.Object) (*core.Instance, error) {
 	if err != nil {
 		return nil, err
 	}
+	watchSilentServers(inst, cfg)
 	if err := inst.Start(); err != nil {
-		_ = inst.Close()
+		_ = closeInstance(inst)
 		return nil, err
 	}
 	return inst, nil
@@ -189,7 +190,7 @@ func measureTags(cfg jsonx.Object, tags []string, testURL string, timeout time.D
 	if err != nil {
 		return nil, err
 	}
-	defer inst.Close()
+	defer closeInstance(inst)
 	results := make([]tagDelay, len(tags))
 	var wg sync.WaitGroup
 	for n, tag := range tags {
@@ -207,14 +208,19 @@ func measureTags(cfg jsonx.Object, tags []string, testURL string, timeout time.D
 // httpDelay fetches testURL through inst: through the outbound tag, or by the instance's routing
 // when tag is empty.
 func httpDelay(inst *core.Instance, tag string, testURL string, timeout time.Duration) (int64, error) {
+	// What Xray does for the request (connecting to the server, its handshake) goes on under the
+	// context it was started with, and net/http's own is not cancelled when the request gives up:
+	// with this one the connection to a server that never answered ends with the measurement.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if tag != "" {
+		ctx = session.SetForcedOutboundTagToContext(ctx, tag)
+	}
 	tr := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		DialContext: func(_ context.Context, network, addr string) (net.Conn, error) {
 			dest, err := xnet.ParseDestination(network + ":" + addr)
 			if err != nil {
 				return nil, err
-			}
-			if tag != "" {
-				ctx = session.SetForcedOutboundTagToContext(ctx, tag)
 			}
 			return core.Dial(ctx, inst, dest)
 		},

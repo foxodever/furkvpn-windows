@@ -42,7 +42,9 @@ var testTLS *tls.Config
 const (
 	configMaxAge      = 6 * time.Hour
 	configStaleOnOpen = time.Hour
-	accountMaxAge     = 10 * time.Minute
+	// A key outside the allowed domains fetches the settings again at most this often.
+	configRecheck = time.Minute
+	accountMaxAge = 10 * time.Minute
 )
 
 // Options of the engine.
@@ -324,6 +326,19 @@ func (e *Engine) refreshConfigIfOlder(age time.Duration) {
 	if !fresh {
 		_ = e.refreshConfig(e.ctx)
 	}
+}
+
+// recheckConfig fetches the settings again unless they have just come; true when new ones came.
+func (e *Engine) recheckConfig() bool {
+	e.mu.Lock()
+	recent := time.Since(e.configFetchedAt) < configRecheck
+	e.mu.Unlock()
+	if recent {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
+	defer cancel()
+	return e.refreshConfig(ctx) == nil
 }
 
 func (e *Engine) refreshConfig(ctx context.Context) error {

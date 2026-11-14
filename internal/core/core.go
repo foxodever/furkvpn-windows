@@ -23,6 +23,8 @@ import (
 	"github.com/xtls/xray-core/infra/conf/serial"
 	_ "github.com/xtls/xray-core/main/distro/all"
 	"github.com/xtls/xray-core/transport/internet"
+
+	"furkvpn/internal/jsonx"
 )
 
 var (
@@ -69,7 +71,8 @@ func Start(configJSON []byte) error {
 	if instance != nil {
 		return errors.New("xray is already running")
 	}
-	cfg, err := loadConfig(withFixes(configJSON))
+	fixed := withFixes(configJSON)
+	cfg, err := loadConfig(fixed)
 	if err != nil {
 		return err
 	}
@@ -79,8 +82,11 @@ func Start(configJSON []byte) error {
 	if err != nil {
 		return fmt.Errorf("create xray instance: %w", err)
 	}
+	if parsed, err := jsonx.ParseObject(fixed); err == nil {
+		watchSilentServers(inst, parsed)
+	}
 	if err := inst.Start(); err != nil {
-		_ = inst.Close()
+		_ = closeInstance(inst)
 		forgetDialerControllers()
 		return fmt.Errorf("start xray: %w", err)
 	}
@@ -101,7 +107,7 @@ func Stop() error {
 		return nil
 	}
 	running.Store(nil)
-	err := instance.Close()
+	err := closeInstance(instance)
 	instance = nil
 	forgetDialerControllers()
 	return err
@@ -114,6 +120,7 @@ func forgetDialerControllers() {
 	internet.ControllersLock.Lock()
 	internet.Controllers = nil
 	internet.ControllersLock.Unlock()
+	watchDialedSockets()
 }
 
 // Running reports whether the VPN instance is up.

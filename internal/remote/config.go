@@ -129,10 +129,19 @@ var AllowHTTPUpdates = false
 // Defaults are used until the API answers, and for anything it leaves out.
 func Defaults() Config {
 	return Config{
-		AllowedSubscriptionHosts: []string{"*.furkvpn.com", "furkconnection.net"},
-		SubscriptionMirrors:      []string{"https://furkconnection.net"},
-		TelegramBotURL:           "https://t.me/FurkVPNbot?start=app",
-		RenewURL:                 "https://t.me/FurkVPNbot",
+		// The subscriptions' domains as of 1.3.1, for when furkapp.net can't be reached.
+		AllowedSubscriptionHosts: []string{
+			"*.furkvpn.com", "furkconnection.net", "furkconnect.net", "furklink.com", "furklinks.net",
+			"furkconnex.com", "furklinkup.net", "furkuplink.com", "furknetwork.net", "furkonline.com",
+			"furkgate.net", "furkgateway.com", "furkroute.net", "furkpath.com", "furkway.net",
+			"furklane.com", "furkbridge.net", "furkport.com", "furkportal.net", "furkaccess.com",
+			"furkpoint.net", "furkstream.com", "furkflow.net", "furkwave.com", "furksignal.net",
+			"furkline.com", "furkchannel.net", "furkrelay.com", "furkhub.net", "furknode.com",
+			"furksync.net", "furkcloud.com",
+		},
+		SubscriptionMirrors: []string{"https://furkconnection.net"},
+		TelegramBotURL:      "https://t.me/FurkVPNbot?start=app",
+		RenewURL:            "https://t.me/FurkVPNbot",
 		Support: []SupportContact{
 			{"telegram", "Telegram", "https://t.me/FurkVPNSupport"},
 			{"vk", "ВКонтакте", "https://vk.me/FurkVPN"},

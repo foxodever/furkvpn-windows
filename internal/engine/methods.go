@@ -100,6 +100,9 @@ func (e *Engine) Handle(ctx context.Context, c *ipc.Conn, method string, params 
 	case "checkWhitelist":
 		e.kickWhitelist(0)
 		return nil, nil
+	case "memory":
+		p, _ := decode[struct{ Profiles bool }](params)
+		return e.Memory(p.Profiles), nil
 
 	case "set":
 		return nil, e.set(params)

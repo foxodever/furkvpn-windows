@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -283,5 +284,44 @@ func TestSendKeyToTV(t *testing.T) {
 	}
 	if err := e.SendTVKey("AB"); err == nil || !strings.Contains(err.Error(), "tv_bad_code") {
 		t.Fatalf("bad code: %v", err)
+	}
+}
+
+// The settings hadn't come yet, or came before the key's domain was added to them: the key fetches
+// them again instead of being called foreign, but not more often than once a minute.
+func TestKeyOnANewDomainFetchesTheSettingsAgain(t *testing.T) {
+	var mu sync.Mutex
+	hosts, fetches := `["*.furkvpn.com"]`, 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/config", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		fetches++
+		fmt.Fprintf(w, `{"allowedSubscriptionHosts":%s}`, hosts)
+	})
+	mux.HandleFunc("/abcDEF123456/json", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "["+vlessConfig("🇳🇱 Нидерланды", "192.0.2.1")+"]")
+	})
+	server := httptest.NewTLSServer(mux)
+	testTLS = server.Client().Transport.(*http.Transport).TLSClientConfig
+	t.Cleanup(server.Close)
+	e, _ := newEngine(t, server)
+	key := server.URL + "/abcDEF123456"
+
+	if _, err := e.SubmitKey(key); err == nil || !strings.Contains(err.Error(), "foreign_key") {
+		t.Fatalf("not on the list: %v", err)
+	}
+	mu.Lock()
+	hosts = `["*.furkvpn.com","127.0.0.1"]`
+	asked := fetches
+	mu.Unlock()
+	if asked != 1 {
+		t.Fatalf("the settings that just came were fetched again (%d)", asked)
+	}
+	e.mu.Lock()
+	e.configFetchedAt = time.Now().Add(-2 * configRecheck)
+	e.mu.Unlock()
+	if r, err := e.SubmitKey(key); err != nil || r.Result != "imported" {
+		t.Fatalf("%+v %v", r, err)
 	}
 }
