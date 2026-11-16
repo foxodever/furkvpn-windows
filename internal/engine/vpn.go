@@ -60,6 +60,12 @@ func (a applied) equal(b applied) bool {
 		slices.Equal(a.routing.Block, b.routing.Block)
 }
 
+// Replaced in tests.
+var (
+	hasIPv6   = netx.HasIPv6
+	startCore = core.Start
+)
+
 // autoBest is the server auto-select found best a moment ago, to start the next core with it as
 // the fallback.
 type autoBest struct {
@@ -95,6 +101,11 @@ func (e *Engine) coreTun(t settings.Tun) settings.Tun {
 	t.SystemProxy = false
 	if t.Enabled {
 		t.ProxyPort = 0
+		// A Windows with IPv6 turned off has none for the adapter either, and the core, told to
+		// set it up, gives up after 15 seconds of trying ("Element not found").
+		if t.IPv6 && (e.noTunIPv6.Load() || !hasIPv6()) {
+			t.IPv6 = false
+		}
 	} else {
 		t.MTU, t.IPv6, t.StrictDNS = 0, false, false
 	}
@@ -185,16 +196,19 @@ func (e *Engine) startLocked(reconnect bool) error {
 	}
 	e.mu.Unlock()
 	r := want.routing
-	config, err := xrayconf.Build(raw, xrayconf.Options{
-		LogLevel:  connectLogLevel,
-		Tun:       tun,
-		LocalPort: localPort,
-		Share:     share,
-		Routing:   &xrayconf.Routing{Enabled: r.Enabled, LANDirect: r.LANDirect, RUDirect: r.RUDirect, Direct: r.Direct, Proxy: r.Proxy, Block: r.Block},
-		Excluded:  want.excluded,
-		Fallback:  fallback,
-		ErrorLog:  e.xrayLog(),
-	})
+	build := func() ([]byte, error) {
+		return xrayconf.Build(raw, xrayconf.Options{
+			LogLevel:  connectLogLevel,
+			Tun:       tun,
+			LocalPort: localPort,
+			Share:     share,
+			Routing:   &xrayconf.Routing{Enabled: r.Enabled, LANDirect: r.LANDirect, RUDirect: r.RUDirect, Direct: r.Direct, Proxy: r.Proxy, Block: r.Block},
+			Excluded:  want.excluded,
+			Fallback:  fallback,
+			ErrorLog:  e.xrayLog(),
+		})
+	}
+	config, err := build()
 	if err != nil {
 		return fail(ipc.Errorf("bad_config", err.Error()))
 	}
@@ -203,7 +217,21 @@ func (e *Engine) startLocked(reconnect bool) error {
 	}
 	e.connlog.SetOutbounds(xrayconf.OutboundProtocols(config))
 	e.applyConnectionLog(s.ConnectionLog)
-	if err := core.Start(config); err != nil {
+	err = startCore(config)
+	if err != nil && tun != nil && tun.IPv6 && core.NoInterface(err) {
+		// Other adapters have IPv6 and this one got none: whatever keeps it from the adapter, the
+		// VPN works without. Remembered, as finding it out takes the core its 15 seconds.
+		e.log.Printf("the adapter did not come up with IPv6 (%v), starting without it", err)
+		e.noTunIPv6.Store(true)
+		want.tun.IPv6, tun.IPv6 = false, false
+		if config, err = build(); err == nil {
+			err = startCore(config)
+		}
+		if err != nil {
+			e.noTunIPv6.Store(false) // not IPv6's fault then
+		}
+	}
+	if err != nil {
 		return fail(ipc.Errorf("core", err.Error()))
 	}
 	if share != nil {

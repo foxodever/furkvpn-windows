@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/xtls/xray-core/app/observatory"
 	"github.com/xtls/xray-core/common/platform"
@@ -98,6 +99,10 @@ func Start(configJSON []byte) error {
 	createMu.Unlock()
 	return nil
 }
+
+// NoInterface tells that Start failed with Windows' "Element not found" (ERROR_NOT_FOUND), which
+// is how Xray's TUN ends when the adapter has no interface of an IP version it was told to set up.
+func NoInterface(err error) bool { return errors.Is(err, syscall.Errno(1168)) }
 
 // Stop shuts the VPN instance down; the TUN adapter, its routes and filters go with it.
 func Stop() error {

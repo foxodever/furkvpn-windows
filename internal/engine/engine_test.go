@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -83,6 +85,17 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// waitForAccount waits out the account request an import starts: it reads APIBase, which the next
+// test's engine sets.
+func waitForAccount(t *testing.T, e *Engine) {
+	t.Helper()
+	waitFor(t, "the account", func() bool {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.account != nil
+	})
 }
 
 func TestImportConnectRebuildDisconnect(t *testing.T) {
@@ -302,6 +315,9 @@ func TestKeyOnANewDomainFetchesTheSettingsAgain(t *testing.T) {
 	mux.HandleFunc("/abcDEF123456/json", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "["+vlessConfig("🇳🇱 Нидерланды", "192.0.2.1")+"]")
 	})
+	mux.HandleFunc("/api/v1/subscription/status", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"found":true,"planName":"Тест","expiresAt":2000000000,"isFree":false}`)
+	})
 	server := httptest.NewTLSServer(mux)
 	testTLS = server.Client().Transport.(*http.Transport).TLSClientConfig
 	t.Cleanup(server.Close)
@@ -323,5 +339,118 @@ func TestKeyOnANewDomainFetchesTheSettingsAgain(t *testing.T) {
 	e.mu.Unlock()
 	if r, err := e.SubmitKey(key); err != nil || r.Result != "imported" {
 		t.Fatalf("%+v %v", r, err)
+	}
+	waitForAccount(t, e)
+}
+
+// A Windows with IPv6 turned off has none for the VPN's adapter, and the core does not start when
+// told to set it up: the adapter then goes without IPv6. Where Windows has IPv6 and the adapter
+// still comes up without, the core is started again without it, and that is remembered.
+func TestAdapterGoesWithoutIPv6WhereWindowsHasNone(t *testing.T) {
+	oldHas, oldStart := hasIPv6, startCore
+	t.Cleanup(func() { hasIPv6, startCore = oldHas, oldStart })
+
+	var mu sync.Mutex
+	system, adapter := false, false // IPv6 in Windows, and for the adapter
+	var starts []bool               // each start of the core: with IPv6?
+	hasIPv6 = func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return system
+	}
+	startCore = func(config []byte) error {
+		mu.Lock()
+		defer mu.Unlock()
+		with := strings.Contains(string(config), `"fdfe:dcba:9876::1/126"`)
+		starts = append(starts, with)
+		if with && !adapter {
+			return fmt.Errorf("start xray: %w", fmt.Errorf("failed to start proxy > %w", syscall.Errno(1168)))
+		}
+		return nil
+	}
+	started := func() []bool {
+		mu.Lock()
+		defer mu.Unlock()
+		out := starts
+		starts = nil
+		return out
+	}
+
+	server := testServer(t)
+	e, _ := newEngine(t, server, func(e *Engine) { e.opt.DevProxyOnly = false })
+	if _, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount(t, e)
+	applied := func() bool {
+		e.vpnLock.Lock()
+		defer e.vpnLock.Unlock()
+		return e.run.applied.tun.IPv6
+	}
+
+	// Windows has no IPv6: the core is not even asked for it.
+	if err := e.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if got := started(); len(got) != 1 || got[0] || applied() {
+		t.Fatalf("starts with IPv6: %v", got)
+	}
+	e.Disconnect()
+
+	// Windows has it and the adapter gets none: the second start is without, and so are the next ones.
+	mu.Lock()
+	system = true
+	mu.Unlock()
+	if err := e.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if got := started(); len(got) != 2 || !got[0] || got[1] || applied() {
+		t.Fatalf("starts with IPv6: %v", got)
+	}
+	if e.wanted().tun.IPv6 {
+		t.Fatal("the next rebuild would try IPv6 again")
+	}
+	e.Reconnect()
+	if got := started(); len(got) != 1 || got[0] {
+		t.Fatalf("starts with IPv6 after a restart: %v", got)
+	}
+	e.Disconnect()
+
+	// Both there: IPv6 goes into the adapter as the settings say.
+	e.noTunIPv6.Store(false)
+	mu.Lock()
+	adapter = true
+	mu.Unlock()
+	if err := e.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if got := started(); len(got) != 1 || !got[0] || !applied() {
+		t.Fatalf("starts with IPv6: %v", got)
+	}
+	e.Disconnect()
+}
+
+// A start that fails without IPv6 as well has another reason: IPv6 is tried again next time.
+func TestAdapterFailureIsNotBlamedOnIPv6(t *testing.T) {
+	oldHas, oldStart := hasIPv6, startCore
+	t.Cleanup(func() { hasIPv6, startCore = oldHas, oldStart })
+	hasIPv6 = func() bool { return true }
+	var starts atomic.Int32
+	startCore = func([]byte) error {
+		starts.Add(1)
+		return fmt.Errorf("start xray: %w", syscall.Errno(1168))
+	}
+
+	server := testServer(t)
+	e, _ := newEngine(t, server, func(e *Engine) { e.opt.DevProxyOnly = false })
+	if _, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount(t, e)
+	if err := e.Connect(); err == nil || e.connected() {
+		t.Fatalf("connected: %v", err)
+	}
+	if starts.Load() != 2 || e.noTunIPv6.Load() || !e.wanted().tun.IPv6 {
+		t.Fatalf("%d starts, without IPv6 from now on: %v", starts.Load(), e.noTunIPv6.Load())
 	}
 }

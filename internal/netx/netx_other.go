@@ -36,6 +36,9 @@ func Current() *State {
 	return nil
 }
 
+// HasIPv6 is of no use on other systems, where the VPN gets no adapter.
+func HasIPv6() bool { return true }
+
 // Watch polls on other systems.
 func Watch(ctx context.Context, changed func()) error {
 	go func() {

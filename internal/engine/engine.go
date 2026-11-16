@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"furkvpn/internal/connlog"
@@ -90,6 +91,8 @@ type Engine struct {
 	healthLock sync.Mutex // one auto-select check at a time
 	best       autoBest   // guarded by mu
 	applyTimer *time.Timer
+	// The adapter did not come up with IPv6 though Windows seemed to have it (see startLocked).
+	noTunIPv6 atomic.Bool
 
 	plain  *http.Client
 	direct *http.Client

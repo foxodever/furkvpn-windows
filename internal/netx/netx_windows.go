@@ -20,7 +20,9 @@ import (
 
 const (
 	ifTypeEthernet = 6
+	ifTypeLoopback = 24
 	ifTypeWiFi     = 71
+	ifTypeTunnel   = 131
 	ifTypeWWANPP   = 243
 	ifTypeWWANPP2  = 244
 	ipUnicastIf    = 31
@@ -72,6 +74,23 @@ func Current() *State {
 		Index: int(best.index),
 		Name:  best.ifrow.Alias(),
 	}
+}
+
+// HasIPv6 reports whether Windows runs IPv6 on network adapters. Turned off for the whole system
+// (DisabledComponents in the registry, the usual "disable IPv6" advice), it stays on the loopback
+// interface alone, and a new adapter, the VPN's included, gets none.
+func HasIPv6() bool {
+	rows, err := winipcfg.GetIPInterfaceTable(windows.AF_INET6)
+	if err != nil {
+		return true
+	}
+	for i := range rows {
+		ifrow, err := rows[i].InterfaceLUID.Interface()
+		if err == nil && ifrow.Type != ifTypeLoopback && ifrow.Type != ifTypeTunnel {
+			return true
+		}
+	}
+	return false
 }
 
 // addressesOf lists an interface's lasting addresses; rotating IPv6 privacy addresses and
