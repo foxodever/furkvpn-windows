@@ -454,3 +454,50 @@ func TestAdapterFailureIsNotBlamedOnIPv6(t *testing.T) {
 		t.Fatalf("%d starts, without IPv6 from now on: %v", starts.Load(), e.noTunIPv6.Load())
 	}
 }
+
+// A fresh install that can't reach furkapp.net (another VPN on) shows the built-in settings, whose
+// lists must reach the window as arrays (a null froze its main screen); the key, once it is
+// added, brings the real settings.
+func TestKeyWithoutTheSettingsFetchesThem(t *testing.T) {
+	var apiDown atomic.Bool
+	apiDown.Store(true)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/config", func(w http.ResponseWriter, r *http.Request) {
+		if apiDown.Load() {
+			http.Error(w, "down", http.StatusBadGateway)
+			return
+		}
+		fmt.Fprint(w, `{"allowedSubscriptionHosts":["127.0.0.1"],"telegramProxies":[{"title":"Польша","url":"https://t.me/proxy?server=1.2.3.4&port=443&secret=dd00"}]}`)
+	})
+	mux.HandleFunc("/abcDEF123456/json", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "["+vlessConfig("🇳🇱 Нидерланды", "192.0.2.1")+"]")
+	})
+	mux.HandleFunc("/api/v1/subscription/status", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"found":true,"planName":"Тест","expiresAt":2000000000,"isFree":false}`)
+	})
+	server := httptest.NewTLSServer(mux)
+	testTLS = server.Client().Transport.(*http.Transport).TLSClientConfig
+	t.Cleanup(server.Close)
+	APIBase = server.URL
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	e := New(ctx, Options{DataDir: t.TempDir(), Log: log.New(io.Discard, "", 0), DevProxyOnly: true})
+
+	if e.refreshConfig(ctx) == nil {
+		t.Fatal("the API is down")
+	}
+	raw, _ := json.Marshal(e.fullState()["config"])
+	if strings.Contains(strings.ReplaceAll(string(raw), `"update":null`, ""), "null") {
+		t.Fatalf("a null in the built-in settings: %s", raw)
+	}
+	// The key's domain is known to the built-in settings (here: the test server's).
+	e.mu.Lock()
+	e.config.AllowedSubscriptionHosts = []string{"127.0.0.1"}
+	e.mu.Unlock()
+	apiDown.Store(false)
+	if r, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil || r.Result != "imported" {
+		t.Fatalf("%+v %v", r, err)
+	}
+	waitFor(t, "the settings", func() bool { return len(e.cfg().TelegramProxies) == 1 })
+	waitForAccount(t, e)
+}

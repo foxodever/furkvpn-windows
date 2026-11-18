@@ -81,6 +81,9 @@ func (e *Engine) importKey(key keys.Key) (*KeyResult, error) {
 	e.clearPings()
 	e.clearAccount()
 	go e.refreshAccount(true)
+	// The settings may not have come yet (furkapp.net unreachable when the window opened, behind
+	// another VPN): the network works now, and the main screen shows their links and proxies.
+	go e.refreshConfigIfOlder(configStaleOnOpen)
 	if wasConnected {
 		go e.Reconnect()
 	}

@@ -152,6 +152,9 @@ func Defaults() Config {
 			{Type: "bot", URL: "https://t.me/FurkVPNbot"},
 		},
 		Site: SiteConfig{Domain: "furkvpn.info", APIDomain: "api.furkvpn.info"},
+		// Lists are empty, never nil: the window gets them as [] and not as null, which its screens
+		// can't read (a fresh install that couldn't reach furkapp.net froze on the main screen).
+		TelegramProxies: []TelegramProxy{},
 		ServerFilters: []ServerFilter{
 			{"⚡️", "Надёжный"},
 			{"🎮", "Игровой"},
@@ -169,6 +172,7 @@ func Defaults() Config {
 		},
 		DefaultExcludedApps: []string{"ru.rostel", "ru.gosuslugi.goskey", "ru.oneme.app"},
 		DelayTestURL:        "https://www.gstatic.com/generate_204",
+		Windows:             WindowsConfig{DefaultExcludedApps: []string{}},
 	}
 }
 
@@ -191,7 +195,7 @@ func Sanitize(c Config) Config {
 	if len(c.Support) == 0 {
 		c.Support = d.Support
 	}
-	links := c.Links[:0:0]
+	links := []AppLink{}
 	for _, l := range c.Links {
 		if strings.TrimSpace(l.URL) != "" {
 			links = append(links, l)
@@ -201,7 +205,7 @@ func Sanitize(c Config) Config {
 	c.Site = c.Site.Sanitized()
 	c.DefaultExcludedApps = trimmed(c.DefaultExcludedApps)
 	c.Windows.DefaultExcludedApps = programNames(c.Windows.DefaultExcludedApps)
-	filters := c.ServerFilters[:0:0]
+	filters := []ServerFilter{}
 	for _, f := range c.ServerFilters {
 		if strings.TrimSpace(f.Emoji) != "" {
 			filters = append(filters, f)
@@ -225,8 +229,14 @@ func Sanitize(c Config) Config {
 	if strings.TrimSpace(c.DelayTestURL) == "" {
 		c.DelayTestURL = d.DelayTestURL
 	}
-	if c.SubscriptionMirrors == nil {
-		c.SubscriptionMirrors = []string{}
+	// "null" from the API must not reach the window either.
+	for _, list := range []*[]string{
+		&c.SubscriptionMirrors, &c.Whitelist.BlockedProbes, &c.Whitelist.AllowedProbes,
+		&c.Whitelist.LTEServer, &c.Whitelist.WifiServer, &c.Whitelist.BypassServer, &c.Whitelist.PingServers,
+	} {
+		if *list == nil {
+			*list = []string{}
+		}
 	}
 	if u := c.Windows.Update; u != nil && (u.VersionCode <= 0 || !(strings.HasPrefix(u.URL, "https://") || AllowHTTPUpdates && strings.HasPrefix(u.URL, "http://"))) {
 		c.Windows.Update = nil

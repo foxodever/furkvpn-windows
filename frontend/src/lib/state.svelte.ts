@@ -88,10 +88,21 @@ const messageTexts: Record<string, StringKey> = {
   vpn_error: "vpn_error",
 };
 
+/** The settings from furkapp.net over the built-in ones: a field that came as null keeps its default. */
+function configOf(value: unknown): RemoteConfig {
+  const config: Record<string, unknown> = { ...defaultConfig };
+  if (value && typeof value === "object") {
+    for (const [key, v] of Object.entries(value)) {
+      if (v != null) config[key] = v;
+    }
+  }
+  return config as unknown as RemoteConfig;
+}
+
 export function start() {
   onEvent("state", (data: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(data)) {
-      (app as Record<string, unknown>)[key] = value ?? (key === "config" ? defaultConfig : null);
+      (app as Record<string, unknown>)[key] = key === "config" ? configOf(value) : (value ?? null);
     }
     app.online = true;
     app.loaded = true;

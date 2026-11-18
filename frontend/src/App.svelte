@@ -77,30 +77,42 @@
   }}
   ondrop={drop}
 >
-  {#if !app.loaded}
-    <div class="splash">
-      <Logo width={130} height={120} />
-      {#if !app.online}{@render serviceDown()}{:else}<Spinner />{/if}
-    </div>
-  {:else if current === "home"}
-    <Home />
-  {:else if current === "onboarding"}
-    <Onboarding />
-  {:else if current === "changeKey"}
-    <Onboarding canGoBack />
-  {:else if current === "settings"}
-    <Settings />
-  {:else if current === "routing"}
-    <Routing />
-  {:else if current === "apps"}
-    <Apps />
-  {:else if current === "share"}
-    <Share />
-  {:else if current === "connlog"}
-    <ConnectionLog />
-  {:else if current === "advanced"}
-    <Advanced />
-  {/if}
+  <!-- A screen that fails to draw shows a way out instead of freezing the whole window. -->
+  <svelte:boundary onerror={(error) => console.error("screen:", error)}>
+    {#if !app.loaded}
+      <div class="splash">
+        <Logo width={130} height={120} />
+        {#if !app.online}{@render serviceDown()}{:else}<Spinner />{/if}
+      </div>
+    {:else if current === "home"}
+      <Home />
+    {:else if current === "onboarding"}
+      <Onboarding />
+    {:else if current === "changeKey"}
+      <Onboarding canGoBack />
+    {:else if current === "settings"}
+      <Settings />
+    {:else if current === "routing"}
+      <Routing />
+    {:else if current === "apps"}
+      <Apps />
+    {:else if current === "share"}
+      <Share />
+    {:else if current === "connlog"}
+      <ConnectionLog />
+    {:else if current === "advanced"}
+      <Advanced />
+    {/if}
+    {#snippet failed(_error, reset)}
+      <div class="splash">
+        <Logo width={130} height={120} />
+        <div class="service card pad">
+          <div class="body-medium">{t("screen_error")}</div>
+          <button class="btn filled interactive" onclick={reset}>{t("action_retry")}</button>
+        </div>
+      </div>
+    {/snippet}
+  </svelte:boundary>
 
   {#if app.loaded && !app.online}
     <div class="offline">{@render serviceDown()}</div>

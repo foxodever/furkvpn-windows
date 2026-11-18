@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -106,5 +108,26 @@ func TestRenewalPageOfTheSubscription(t *testing.T) {
 	}
 	if got := (SiteConfig{Domain: "furkvpn2.info"}).RenewalURL("a/b&c"); got != "https://furkvpn2.info/renewal?sub=a%2Fb%26c" {
 		t.Error(got)
+	}
+}
+
+// The window reads every list of the settings as an array: a null among them broke its main screen
+// (a fresh install that couldn't reach furkapp.net had only the built-in settings, with no
+// Telegram proxies as null, and froze after adding the key). Only "update" may be null.
+func TestListsAreNeverNull(t *testing.T) {
+	fromAPI, _ := Decode([]byte(`{"subscriptionMirrors":null,"support":null,"links":null,"telegramProxies":null,
+		"serverFilters":null,"defaultExcludedApps":null,"whitelist":{"blockedProbes":null,"allowedProbes":null,
+		"lteServer":null,"wifiServer":null,"bypassServer":null,"pingServers":null},"windows":{"defaultExcludedApps":null}}`))
+	nulls := regexp.MustCompile(`"(\w+)":null`)
+	for name, cfg := range map[string]Config{"built-in": Defaults(), "sanitized built-in": Sanitize(Defaults()), "API": fromAPI} {
+		data, err := json.Marshal(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range nulls.FindAllStringSubmatch(string(data), -1) {
+			if m[1] != "update" {
+				t.Errorf("%s settings: %s is null", name, m[1])
+			}
+		}
 	}
 }
