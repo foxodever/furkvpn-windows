@@ -106,7 +106,12 @@ type Settings struct {
 	UseRecommendedExclusions bool `json:"useRecommendedExclusions"`
 	// Recommended programs the user put back into the VPN one by one.
 	RecommendedOverrides []string `json:"recommendedOverrides"`
-	Share                Share    `json:"share"`
+	// Only the programs in VPNApps go through the VPN and everything else around it. The lists
+	// above are kept for when this is turned off again.
+	OnlySelectedApps bool `json:"onlySelectedApps"`
+	// Programs that go through the VPN while OnlySelectedApps is on (exe names).
+	VPNApps []string `json:"vpnApps"`
+	Share   Share    `json:"share"`
 	// Two-pane layout: the server list on the left.
 	ServersOnLeft           bool    `json:"serversOnLeft"`
 	SubscriptionUpdateHours int     `json:"subscriptionUpdateHours"`
@@ -134,6 +139,7 @@ func Defaults() Settings {
 		ExcludedApps:             []string{},
 		UseRecommendedExclusions: true,
 		RecommendedOverrides:     []string{},
+		VPNApps:                  []string{},
 		Share:                    Share{HTTPPort: DefaultHTTPPort, SocksPort: DefaultSocksPort},
 		SubscriptionUpdateHours:  UpdateFromSubscription,
 		Routing:                  Routing{Enabled: true, LANDirect: true, Direct: []string{}, Proxy: []string{}, Block: []string{}},
@@ -228,6 +234,7 @@ func WriteAtomically(path string, data []byte) error {
 func clone(s Settings) Settings {
 	s.ExcludedApps = slices.Clone(s.ExcludedApps)
 	s.RecommendedOverrides = slices.Clone(s.RecommendedOverrides)
+	s.VPNApps = slices.Clone(s.VPNApps)
 	s.Routing.Direct = slices.Clone(s.Routing.Direct)
 	s.Routing.Proxy = slices.Clone(s.Routing.Proxy)
 	s.Routing.Block = slices.Clone(s.Routing.Block)
@@ -238,6 +245,7 @@ func clone(s Settings) Settings {
 func clean(s Settings) Settings {
 	s.ExcludedApps = sortedSet(s.ExcludedApps)
 	s.RecommendedOverrides = sortedSet(s.RecommendedOverrides)
+	s.VPNApps = sortedSet(s.VPNApps)
 	s.Routing.Direct = sortedSet(s.Routing.Direct)
 	s.Routing.Proxy = sortedSet(s.Routing.Proxy)
 	s.Routing.Block = sortedSet(s.Routing.Block)
@@ -336,12 +344,15 @@ func without(list, remove []string) []string {
 }
 
 // Exclusions are the programs that go around the VPN: the user's own choice plus the server's
-// recommended list.
+// recommended list. With OnlySelected, it is the other way round: only the programs in Selected
+// go through the VPN.
 type Exclusions struct {
 	Manual         []string `json:"manual"`
 	Recommended    []string `json:"recommended"`
 	UseRecommended bool     `json:"useRecommended"`
 	Overrides      []string `json:"overrides"`
+	OnlySelected   bool     `json:"onlySelected"`
+	Selected       []string `json:"selected"`
 }
 
 // ExclusionsOf combines the settings with the server's list.
@@ -351,10 +362,13 @@ func ExclusionsOf(s Settings, recommended []string) Exclusions {
 		Recommended:    sortedSet(recommended),
 		UseRecommended: s.UseRecommendedExclusions,
 		Overrides:      slices.Clone(s.RecommendedOverrides),
+		OnlySelected:   s.OnlySelectedApps,
+		Selected:       slices.Clone(s.VPNApps),
 	}
 }
 
-// Effective is the final list, compared case-insensitively like Windows file names.
+// Effective is the final list of programs without VPN (when not OnlySelected), compared
+// case-insensitively like Windows file names.
 func (e Exclusions) Effective() []string {
 	out := slices.Clone(e.Manual)
 	if e.UseRecommended {
@@ -389,19 +403,33 @@ func (s *Settings) SetAppExcluded(name string, excluded bool, recommended []stri
 	}
 }
 
-// AppsImport is "Программы без VPN" from a file.
+// SetAppSelected puts one program into the list of those that go through the VPN while only
+// selected programs do, or takes it out.
+func (s *Settings) SetAppSelected(name string, selected bool) {
+	s.VPNApps = withoutFold(s.VPNApps, name)
+	if selected {
+		s.VPNApps = append(s.VPNApps, name)
+	}
+}
+
+// AppsImport is "Программы без VPN" (or "через VPN") from a file.
 type AppsImport struct {
 	UseRecommended bool     `json:"useRecommended"`
 	Excluded       []string `json:"excluded"`
 	ReturnedToVPN  []string `json:"returnedToVpn"`
+	OnlySelected   bool     `json:"onlySelected"`
+	VPNApps        []string `json:"vpnApps"`
 }
 
-// ImportApps applies a file: replace takes the whole setup, otherwise its programs are added.
+// ImportApps applies a file: replace takes the whole setup, otherwise its programs are added to
+// both lists and the mode stays as it is.
 func (s *Settings) ImportApps(apps AppsImport, replace bool) {
 	if replace {
 		s.ExcludedApps = slices.Clone(apps.Excluded)
 		s.UseRecommendedExclusions = apps.UseRecommended
 		s.RecommendedOverrides = slices.Clone(apps.ReturnedToVPN)
+		s.OnlySelectedApps = apps.OnlySelected
+		s.VPNApps = slices.Clone(apps.VPNApps)
 		return
 	}
 	for _, name := range apps.Excluded {
@@ -409,6 +437,11 @@ func (s *Settings) ImportApps(apps AppsImport, replace bool) {
 			s.ExcludedApps = append(s.ExcludedApps, name)
 		}
 		s.RecommendedOverrides = withoutFold(s.RecommendedOverrides, name)
+	}
+	for _, name := range apps.VPNApps {
+		if !containsFold(s.VPNApps, name) {
+			s.VPNApps = append(s.VPNApps, name)
+		}
 	}
 }
 

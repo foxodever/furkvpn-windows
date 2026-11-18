@@ -192,6 +192,21 @@ func (e *Engine) Handle(ctx context.Context, c *ipc.Conn, method string, params 
 		_, err = e.settings.Update(func(s *settings.Settings) { s.SetAppExcluded(name, p.Excluded, recommended) })
 		return nil, err
 
+	case "setAppSelected":
+		p, err := decode[struct {
+			Name     string
+			Selected bool
+		}](params)
+		if err != nil {
+			return nil, err
+		}
+		name, ok := transfer.ProgramName(p.Name)
+		if !ok {
+			return nil, ipc.Errorf("bad_request", "name")
+		}
+		_, err = e.settings.Update(func(s *settings.Settings) { s.SetAppSelected(name, p.Selected) })
+		return nil, err
+
 	case "exportSettings":
 		p, err := decode[struct{ Kind string }](params)
 		if err != nil {
@@ -284,7 +299,7 @@ func (e *Engine) set(params json.RawMessage) error {
 	var change func(s *settings.Settings)
 	switch p.Key {
 	case "whitelistDetect", "connectionLog", "shareEnabled", "shareAuth", "serversOnLeft", "autoConnect",
-		"routingEnabled", "routingLanDirect", "routingRuDirect", "useRecommendedExclusions",
+		"routingEnabled", "routingLanDirect", "routingRuDirect", "useRecommendedExclusions", "onlySelectedApps",
 		"tunEnabled", "tunIpv6", "tunStrictDns", "systemProxy":
 		if err := asBool(); err != nil {
 			return ipc.Errorf("bad_request", err.Error())
@@ -314,6 +329,8 @@ func (e *Engine) set(params json.RawMessage) error {
 				s.Routing.RUDirect = b
 			case "useRecommendedExclusions":
 				s.UseRecommendedExclusions = b
+			case "onlySelectedApps":
+				s.OnlySelectedApps = b
 			case "tunEnabled":
 				s.Tun.Enabled = b
 			case "tunIpv6":

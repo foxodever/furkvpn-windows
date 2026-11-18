@@ -171,6 +171,8 @@ func (e *Engine) slice(name string) any {
 			"useRecommended": x.UseRecommended,
 			"overrides":      x.Overrides,
 			"effective":      x.Effective(),
+			"onlySelected":   x.OnlySelected,
+			"selected":       x.Selected,
 		}
 	case "routing":
 		r := e.settings.Get().Routing

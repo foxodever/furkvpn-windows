@@ -195,12 +195,15 @@
 
 {#if ui.pendingImport}
   {@const f = ui.pendingImport.file}
-  <Dialog title={t(f.kind === "routing" ? "import_routing_title" : "import_apps_title")} onclose={() => (ui.pendingImport = null)}>
+  <Dialog
+    title={t(f.kind === "routing" ? "import_routing_title" : f.apps?.onlySelected ? "split_title_only" : "import_apps_title")}
+    onclose={() => (ui.pendingImport = null)}
+  >
     <p>
       {#if f.kind === "routing" && f.routing}
         {t("import_routing_text", f.routing.direct.length + f.routing.proxy.length + f.routing.block.length, f.routing.direct.length, f.routing.proxy.length, f.routing.block.length)}
       {:else if f.apps}
-        {t("import_apps_text", f.apps.excluded.length)}
+        {t("import_apps_text", new Set([...f.apps.excluded, ...(f.apps.vpnApps ?? [])].map((n) => n.toLowerCase())).size)}
       {/if}
     </p>
     {#if f.skipped > 0}<p>{t("import_skipped", f.skipped)}</p>{/if}

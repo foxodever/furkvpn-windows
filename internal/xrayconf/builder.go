@@ -32,6 +32,13 @@ const (
 	TunDNS        = "172.19.0.2"
 )
 
+// Connections of the programs chosen to go through the VPN (Options.OnlyApps) come back through
+// AppsLoopTag as if from AppsTag, and meet the routing rules from there.
+const (
+	AppsTag     = "apps-in"
+	AppsLoopTag = "apps-loop"
+)
+
 // Tun is the VPN adapter.
 type Tun struct {
 	MTU int
@@ -82,6 +89,10 @@ type Options struct {
 	Routing   *Routing
 	// Programs that go around the VPN (exe names).
 	Excluded []string
+	// Only the programs in VPNApps (exe names) go through the VPN, everything else around it;
+	// Excluded is not used then.
+	OnlyApps bool
+	VPNApps  []string
 	// The server auto-select found best a moment ago: its first choice until the first checks end.
 	Fallback string
 	// File for Xray's own errors (never the visited addresses); none when empty.
@@ -219,7 +230,30 @@ func Build(raw []byte, opt Options) ([]byte, error) {
 		first = append(first, jsonx.Object{"type": "field", "inboundTag": []any{TunTag}, "port": "53", "outboundTag": dnsTag})
 	}
 	// Programs without VPN go around everything else, as if they were not in the TUN at all.
-	if names := processNames(opt.Excluded); len(names) > 0 {
+	if opt.OnlyApps {
+		// Xray's rules can't say "every program but these", so the chosen ones are sent back into
+		// routing under a tag of their own, and all the rest of the computer goes directly. Their
+		// connections are sniffed again there: the panel's rules look at the protocol (BitTorrent,
+		// QUIC), which the first look found but doesn't pass on.
+		if names := processNames(opt.VPNApps); len(names) > 0 {
+			outbounds = append(outbounds, jsonx.Object{
+				"tag":      AppsLoopTag,
+				"protocol": "loopback",
+				"settings": jsonx.Object{"inboundTag": AppsTag, "sniffing": jsonx.Clone(sniffing)},
+			})
+			first = append(first, jsonx.Object{
+				"type":        "field",
+				"inboundTag":  []any{mainTag},
+				"process":     toAny(names),
+				"outboundTag": AppsLoopTag,
+			})
+		}
+		first = append(first, jsonx.Object{
+			"type":        "field",
+			"inboundTag":  []any{mainTag},
+			"outboundTag": tagOf(template, &outbounds, "freedom", UserDirectTag),
+		})
+	} else if names := processNames(opt.Excluded); len(names) > 0 {
 		first = append(first, jsonx.Object{
 			"type":        "field",
 			"inboundTag":  []any{mainTag},

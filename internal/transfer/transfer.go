@@ -45,6 +45,10 @@ type appsFile struct {
 	UseRecommended bool     `json:"useRecommended"`
 	Excluded       []string `json:"excluded"`
 	ReturnedToVPN  []string `json:"returnedToVpn"`
+	// Only the programs in VPNApps go through the VPN. Files of older versions have neither, and
+	// older versions read new files without them.
+	OnlySelected bool     `json:"onlySelected"`
+	VPNApps      []string `json:"vpnApps"`
 }
 
 // Import is a checked settings file, ready to apply. Skipped counts the entries that were not
@@ -66,9 +70,12 @@ func ExportRouting(r settings.Routing) []byte {
 	return data
 }
 
-// ExportApps writes the programs without VPN.
+// ExportApps writes the programs without VPN, and those through it.
 func ExportApps(e settings.Exclusions) []byte {
-	f := appsFile{Type: TypeApps, Version: 1, UseRecommended: e.UseRecommended, Excluded: sorted(e.Manual), ReturnedToVPN: sorted(e.Overrides)}
+	f := appsFile{
+		Type: TypeApps, Version: 1, UseRecommended: e.UseRecommended, Excluded: sorted(e.Manual), ReturnedToVPN: sorted(e.Overrides),
+		OnlySelected: e.OnlySelected, VPNApps: sorted(e.Selected),
+	}
 	data, _ := json.MarshalIndent(f, "", "    ")
 	return data
 }
@@ -158,9 +165,13 @@ func parseApps(f appsFile) *Import {
 	returned := slices.DeleteFunc(clean(f.ReturnedToVPN), func(x string) bool {
 		return slices.ContainsFunc(excluded, func(e string) bool { return strings.EqualFold(e, x) })
 	})
+	vpnApps := clean(f.VPNApps)
 	return &Import{
-		Kind:    "apps",
-		Apps:    &settings.AppsImport{UseRecommended: f.UseRecommended, Excluded: excluded, ReturnedToVPN: returned},
+		Kind: "apps",
+		Apps: &settings.AppsImport{
+			UseRecommended: f.UseRecommended, Excluded: excluded, ReturnedToVPN: returned,
+			OnlySelected: f.OnlySelected, VPNApps: vpnApps,
+		},
 		Skipped: skipped,
 	}
 }

@@ -56,14 +56,30 @@ func TestAppsRoundTrip(t *testing.T) {
 		Recommended:    []string{"max.exe"},
 		UseRecommended: false,
 		Overrides:      []string{"max.exe"},
+		OnlySelected:   true,
+		Selected:       []string{"firefox.exe", "Discord.exe"},
 	}
 	parsed, err := Parse(ExportApps(e))
 	if err != nil || parsed.Kind != "apps" {
 		t.Fatal(err)
 	}
-	want := settings.AppsImport{UseRecommended: false, Excluded: []string{"Discord.exe", "Telegram.exe"}, ReturnedToVPN: []string{"max.exe"}}
+	want := settings.AppsImport{
+		UseRecommended: false, Excluded: []string{"Discord.exe", "Telegram.exe"}, ReturnedToVPN: []string{"max.exe"},
+		OnlySelected: true, VPNApps: []string{"Discord.exe", "firefox.exe"},
+	}
 	if !reflect.DeepEqual(*parsed.Apps, want) {
 		t.Fatalf("%+v", *parsed.Apps)
+	}
+}
+
+// Files from before "only the chosen programs through VPN" are still the usual mode.
+func TestOldAppsFile(t *testing.T) {
+	parsed, err := Parse([]byte(`{"type":"furkvpn-windows-apps","version":1,"useRecommended":true,"excluded":["Telegram.exe"],"returnedToVpn":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Apps.OnlySelected || parsed.Apps.VPNApps == nil || len(parsed.Apps.VPNApps) != 0 {
+		t.Fatalf("%+v", parsed.Apps)
 	}
 }
 

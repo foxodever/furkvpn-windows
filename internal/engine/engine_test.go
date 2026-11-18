@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -173,6 +174,64 @@ func TestImportConnectRebuildDisconnect(t *testing.T) {
 	if e.settings.Get().WasConnected {
 		t.Fatal("a disconnect by the user is remembered")
 	}
+}
+
+// Programs → «Только выбранные через VPN» from the window: the mode and the list reach the window's
+// state and rebuild the running tunnel; the programs without VPN stay for the usual mode.
+func TestOnlyChosenProgramsFromTheWindow(t *testing.T) {
+	server := testServer(t)
+	e, _ := newEngine(t, server)
+	if _, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount(t, e)
+	if err := e.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	defer e.Disconnect()
+	call := func(method, params string) error {
+		_, err := e.Handle(context.Background(), nil, method, json.RawMessage(params))
+		return err
+	}
+	if err := call("setAppExcluded", `{"name": "bank.exe", "excluded": true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := call("set", `{"key": "onlySelectedApps", "value": true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := call("setAppSelected", `{"name": "C:\\Apps\\Telegram.exe", "selected": true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := call("setAppSelected", `{"name": "bad|name", "selected": true}`); err == nil {
+		t.Fatal("a name that can't be a program's")
+	}
+	waitFor(t, "the rebuild", func() bool {
+		e.vpnLock.Lock()
+		defer e.vpnLock.Unlock()
+		a := e.run.applied
+		return a.onlyApps && len(a.excluded) == 0 && slices.Equal(a.vpnApps, []string{"Telegram.exe"})
+	})
+	var x struct {
+		OnlySelected bool
+		Selected     []string
+		Effective    []string
+	}
+	if err := json.Unmarshal(e.fullState()["exclusions"], &x); err != nil {
+		t.Fatal(err)
+	}
+	if !x.OnlySelected || !slices.Equal(x.Selected, []string{"Telegram.exe"}) || !slices.Contains(x.Effective, "bank.exe") {
+		t.Fatalf("%+v", x)
+	}
+
+	if err := call("set", `{"key": "onlySelectedApps", "value": false}`); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the usual mode", func() bool {
+		e.vpnLock.Lock()
+		defer e.vpnLock.Unlock()
+		a := e.run.applied
+		return !a.onlyApps && len(a.vpnApps) == 0 && slices.Contains(a.excluded, "bank.exe")
+	})
 }
 
 func TestForeignKeysAreRefused(t *testing.T) {

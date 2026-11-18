@@ -238,7 +238,7 @@ func (l *Log) Listener(resolver Resolver) core.ConnectionListener {
 		udp := e.Network == "udp"
 		var owner Owner
 		switch e.Inbound {
-		case xrayconf.TunTag, xrayconf.LocalTag:
+		case xrayconf.TunTag, xrayconf.LocalTag, xrayconf.AppsTag:
 			owner = resolver.Owner(e.Network, e.SrcIP, e.SrcPort, e.DstIP, e.DstPort)
 		case xrayconf.ShareHTTPTag, xrayconf.ShareSocksTag:
 			owner = Owner{Key: "share:" + e.SrcIP, Label: e.SrcIP, Kind: "device"}

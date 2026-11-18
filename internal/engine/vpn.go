@@ -47,6 +47,9 @@ type session struct {
 // applied is what the running tunnel was built with, to notice when it has to be rebuilt.
 type applied struct {
 	excluded []string
+	// Only vpnApps go through the VPN; excluded is empty then.
+	onlyApps bool
+	vpnApps  []string
 	share    *settings.Share
 	routing  settings.Routing
 	tun      settings.Tun
@@ -54,7 +57,8 @@ type applied struct {
 
 func (a applied) equal(b applied) bool {
 	shareEqual := (a.share == nil) == (b.share == nil) && (a.share == nil || *a.share == *b.share)
-	return shareEqual && a.tun == b.tun && slices.Equal(a.excluded, b.excluded) && a.routing.Enabled == b.routing.Enabled &&
+	return shareEqual && a.tun == b.tun && slices.Equal(a.excluded, b.excluded) &&
+		a.onlyApps == b.onlyApps && slices.Equal(a.vpnApps, b.vpnApps) && a.routing.Enabled == b.routing.Enabled &&
 		a.routing.LANDirect == b.routing.LANDirect && a.routing.RUDirect == b.routing.RUDirect &&
 		slices.Equal(a.routing.Direct, b.routing.Direct) && slices.Equal(a.routing.Proxy, b.routing.Proxy) &&
 		slices.Equal(a.routing.Block, b.routing.Block)
@@ -86,9 +90,14 @@ func (e *Engine) wanted() applied {
 		sh := s.Share
 		share = &sh
 	}
-	excluded := settings.ExclusionsOf(s, e.cfg().Windows.DefaultExcludedApps).Effective()
-	slices.Sort(excluded)
-	return applied{excluded: excluded, share: share, routing: s.Routing, tun: e.coreTun(s.Tun)}
+	want := applied{share: share, routing: s.Routing, tun: e.coreTun(s.Tun)}
+	if x := settings.ExclusionsOf(s, e.cfg().Windows.DefaultExcludedApps); x.OnlySelected {
+		want.onlyApps, want.vpnApps = true, x.Selected
+	} else {
+		want.excluded = x.Effective()
+		slices.Sort(want.excluded)
+	}
+	return want
 }
 
 // coreTun is what of Settings → Расширенные настройки the core is built with: the adapter's
@@ -204,6 +213,8 @@ func (e *Engine) startLocked(reconnect bool) error {
 			Share:     share,
 			Routing:   &xrayconf.Routing{Enabled: r.Enabled, LANDirect: r.LANDirect, RUDirect: r.RUDirect, Direct: r.Direct, Proxy: r.Proxy, Block: r.Block},
 			Excluded:  want.excluded,
+			OnlyApps:  want.onlyApps,
+			VPNApps:   want.vpnApps,
 			Fallback:  fallback,
 			ErrorLog:  e.xrayLog(),
 		})

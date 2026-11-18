@@ -274,6 +274,62 @@ func TestTunSettings(t *testing.T) {
 	}
 }
 
+func TestOnlyChosenProgramsGoThroughTheVPN(t *testing.T) {
+	cfg := build(t, raw, Options{
+		Tun:      tun,
+		Excluded: []string{"steam.exe"},
+		OnlyApps: true,
+		VPNApps:  []string{"Telegram.exe"},
+		Routing:  &Routing{Enabled: true, Block: []string{"domain:ads.example"}},
+	})
+	r := rules(cfg)
+	if jsonx.S(r[0], "outboundTag") != "dns-out" {
+		t.Fatal("DNS first")
+	}
+	if !reflect.DeepEqual(jsonx.Strings(r[1]["process"]), []string{"Telegram", "telegram"}) || jsonx.S(r[1], "outboundTag") != AppsLoopTag ||
+		!reflect.DeepEqual(jsonx.Strings(r[1]["inboundTag"]), []string{"tun-in"}) {
+		t.Fatalf("the chosen programs go back into routing: %v", r[1])
+	}
+	if r[2]["process"] != nil || jsonx.S(r[2], "outboundTag") != "direct" || !reflect.DeepEqual(jsonx.Strings(r[2]["inboundTag"]), []string{"tun-in"}) {
+		t.Fatalf("everything else from the computer goes directly: %v", r[2])
+	}
+	if jsonx.S(r[3], "outboundTag") != "user-block" || jsonx.S(r[len(r)-1], "outboundTag") != "direct" || r[len(r)-1]["domain"] == nil {
+		t.Fatalf("then the user's and the server's rules, for the chosen programs: %v", r[3:])
+	}
+	for _, rule := range r {
+		if slices.Contains(jsonx.Strings(rule["process"]), "steam") {
+			t.Fatal("the programs without VPN wait for the usual mode")
+		}
+	}
+	var loop jsonx.Object
+	for _, o := range jsonx.Objects(cfg["outbounds"]) {
+		if jsonx.S(o, "tag") == AppsLoopTag {
+			loop = o
+		}
+	}
+	settings := jsonx.Obj(loop["settings"])
+	if jsonx.S(loop, "protocol") != "loopback" || jsonx.S(settings, "inboundTag") != AppsTag {
+		t.Fatalf("%v", loop)
+	}
+	tunSniffing := jsonx.Obj(jsonx.Objects(cfg["inbounds"])[0]["sniffing"])
+	if !reflect.DeepEqual(jsonx.Obj(settings["sniffing"]), tunSniffing) {
+		t.Fatalf("looked into again like at the adapter: %v", settings["sniffing"])
+	}
+	data, _ := jsonx.Marshal(cfg)
+	if p := OutboundProtocols(data); p[AppsLoopTag] != "loopback" {
+		t.Fatalf("the connection log doesn't take the loopback for a route: %v", p)
+	}
+
+	none := build(t, raw, Options{Tun: tun, OnlyApps: true})
+	r = rules(none)
+	if r[1]["process"] != nil || jsonx.S(r[1], "outboundTag") != "direct" {
+		t.Fatalf("none chosen: everything directly: %v", r[1])
+	}
+	if slices.Contains(tags(jsonx.Objects(none["outbounds"])), AppsLoopTag) {
+		t.Fatal("no loopback without programs")
+	}
+}
+
 func TestWithoutTunProgramsUseALocalProxy(t *testing.T) {
 	cfg := build(t, raw, Options{LocalPort: 10808, Excluded: []string{"Telegram.exe"}, Share: &ShareProxy{HTTPPort: 8080, SocksPort: 1080}})
 	inbounds := jsonx.Objects(cfg["inbounds"])

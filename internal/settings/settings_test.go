@@ -67,6 +67,47 @@ func TestSetAppExcluded(t *testing.T) {
 	}
 }
 
+func TestOnlySelectedAppsKeepTheExclusions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	st := Open(path)
+	if st.Get().OnlySelectedApps || st.Get().VPNApps == nil {
+		t.Fatalf("usual mode by default, with an empty list: %+v", st.Get())
+	}
+	_, err := st.Update(func(s *Settings) {
+		s.SetAppExcluded("bank.exe", true, nil)
+		s.OnlySelectedApps = true
+		s.SetAppSelected("Telegram.exe", true)
+		s.SetAppSelected("firefox.exe", true)
+		s.SetAppSelected("TELEGRAM.EXE", true)
+		s.SetAppSelected("firefox.EXE", false)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := Open(path).Get()
+	if !again.OnlySelectedApps || !reflect.DeepEqual(again.VPNApps, []string{"TELEGRAM.EXE"}) {
+		t.Fatalf("%+v", again)
+	}
+	e := ExclusionsOf(again, []string{"max.exe"})
+	if !e.OnlySelected || !reflect.DeepEqual(e.Selected, []string{"TELEGRAM.EXE"}) || !reflect.DeepEqual(e.Effective(), []string{"bank.exe", "max.exe"}) {
+		t.Fatalf("the programs without VPN wait for the usual mode: %+v", e)
+	}
+}
+
+func TestImportAppsWithTheMode(t *testing.T) {
+	s := Defaults()
+	s.VPNApps = []string{"Discord.exe"}
+	file := AppsImport{UseRecommended: true, Excluded: []string{"bank.exe"}, ReturnedToVPN: []string{}, OnlySelected: true, VPNApps: []string{"discord.exe", "firefox.exe"}}
+	s.ImportApps(file, false)
+	if s.OnlySelectedApps || !reflect.DeepEqual(s.VPNApps, []string{"Discord.exe", "firefox.exe"}) || !reflect.DeepEqual(s.ExcludedApps, []string{"bank.exe"}) {
+		t.Fatalf("adding keeps the mode and adds to both lists: %+v", s)
+	}
+	s.ImportApps(file, true)
+	if !s.OnlySelectedApps || !reflect.DeepEqual(s.VPNApps, []string{"discord.exe", "firefox.exe"}) {
+		t.Fatalf("replacing takes the mode too: %+v", s)
+	}
+}
+
 func TestTokens(t *testing.T) {
 	if u := NewShareUser(); len(u) != 13 || u[:5] != "furk_" {
 		t.Fatal(u)

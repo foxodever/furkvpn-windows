@@ -149,6 +149,9 @@ export interface Exclusions {
   useRecommended: boolean;
   overrides: string[];
   effective: string[];
+  /** Only the programs in selected go through the VPN; the lists above wait for the usual mode. */
+  onlySelected: boolean;
+  selected: string[];
 }
 
 export type RuleKind = "domain" | "keyword" | "full" | "regexp" | "ip";
@@ -245,7 +248,7 @@ export interface LogApp {
 export interface SettingsImport {
   kind: "routing" | "apps";
   routing?: { enabled: boolean; lanDirect: boolean; ruDirect: boolean; direct: string[]; proxy: string[]; block: string[] };
-  apps?: { useRecommended: boolean; excluded: string[]; returnedToVpn: string[] };
+  apps?: { useRecommended: boolean; excluded: string[]; returnedToVpn: string[]; onlySelected: boolean; vpnApps: string[] };
   skipped: number;
 }
 

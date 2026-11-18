@@ -35,7 +35,7 @@ export const app = $state({
   account: null as Account | null,
   config: defaultConfig,
   settings: null as SettingsView | null,
-  exclusions: { manual: [], recommended: [], useRecommended: true, overrides: [], effective: [] } as Exclusions,
+  exclusions: { manual: [], recommended: [], useRecommended: true, overrides: [], effective: [], onlySelected: false, selected: [] } as Exclusions,
   routing: { enabled: true, lanDirect: true, ruDirect: false, direct: [], proxy: [], block: [] } as RoutingView,
   whitelist: { status: "unknown", checking: false, lastCheck: null } as WhitelistView,
   pings: { pinging: false, results: {}, whitelistOnly: false } as PingsView,

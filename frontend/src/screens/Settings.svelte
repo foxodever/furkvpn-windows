@@ -24,7 +24,13 @@
   const s = $derived(app.settings);
   const subHours = $derived(app.subscription.info?.updateIntervalHours || 6);
   const intervals = [0, 1, 3, 6, 12, 24, -1];
-  const excludedCount = $derived(app.exclusions.effective.length);
+  const only = $derived(app.exclusions.onlySelected);
+  const appsCount = $derived(only ? app.exclusions.selected.length : app.exclusions.effective.length);
+  const appsSubtitle = $derived(
+    only
+      ? appsCount === 0 ? t("settings_split_only_none") : t("settings_split_only_count", appsCount)
+      : appsCount === 0 ? t("settings_split_none") : t("settings_split_count", appsCount),
+  );
 
   function intervalLabel(h: number) {
     if (h === 0) return t("update_interval_subscription", subHours);
@@ -76,22 +82,20 @@
       <SettingsRow icon="logout" title={t("settings_logout")} onclick={() => (confirmLogout = true)} />
 
       <div class="section-title">{t("settings_vpn")}</div>
-      <SettingsRow
-        icon="apps"
-        title={t("settings_split")}
-        subtitle={excludedCount === 0 ? t("settings_split_none") : t("settings_split_count", excludedCount)}
-        onclick={() => open("apps")}
-      />
-      <SettingsRow
-        icon="wand_stars"
-        title={t("settings_recommended")}
-        subtitle={t("settings_recommended_hint")}
-        onclick={() => setSetting("useRecommendedExclusions", !app.exclusions.useRecommended)}
-      >
-        {#snippet trailing()}
-          <Switch checked={app.exclusions.useRecommended} onchange={(v) => setSetting("useRecommendedExclusions", v)} />
-        {/snippet}
-      </SettingsRow>
+      <SettingsRow icon="apps" title={t(only ? "split_title_only" : "settings_split")} subtitle={appsSubtitle} onclick={() => open("apps")} />
+      <!-- With only the chosen programs through VPN, everything else goes around it anyway. -->
+      {#if !only}
+        <SettingsRow
+          icon="wand_stars"
+          title={t("settings_recommended")}
+          subtitle={t("settings_recommended_hint")}
+          onclick={() => setSetting("useRecommendedExclusions", !app.exclusions.useRecommended)}
+        >
+          {#snippet trailing()}
+            <Switch checked={app.exclusions.useRecommended} onchange={(v) => setSetting("useRecommendedExclusions", v)} />
+          {/snippet}
+        </SettingsRow>
+      {/if}
       <SettingsRow icon="alt_route" title={t("settings_routing")} subtitle={t("settings_routing_hint")} onclick={() => open("routing")} />
       <SettingsRow
         icon="fact_check"
