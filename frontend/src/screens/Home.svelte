@@ -343,6 +343,11 @@
       transform: scale(1.06);
     }
   }
+  @media (prefers-reduced-motion: reduce) {
+    .halo {
+      animation: none;
+    }
+  }
   .ring {
     position: absolute;
     display: flex;

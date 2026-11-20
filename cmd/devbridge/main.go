@@ -160,6 +160,8 @@ func main() {
 			out = *clipboard
 		case "Autostart":
 			out = true
+		case "Theme":
+			out = "system"
 		case "Programs":
 			out = []map[string]any{
 				{"name": "Telegram.exe", "title": "Telegram Desktop", "path": `C:\Users\Тест\AppData\Roaming\Telegram Desktop\Telegram.exe`, "running": true},

@@ -2,6 +2,7 @@
 // dialogs, snackbars). Every part of the service's state arrives on its own when it changes.
 import { call, CallError, onEvent, system } from "./bridge";
 import { t, type StringKey } from "./i18n";
+import type { Theme } from "./theme";
 import type {
   Account, Exclusions, LanAddress, Meta, PingsView, RemoteConfig, RoutingView, SettingsImport,
   SettingsView, SubscriptionSlice, Traffic, UpdateView, VpnView, WhitelistView,
@@ -58,6 +59,7 @@ export const ui = $state({
   tvSend: null as string | null,
   pendingImport: null as { file: SettingsImport; content: string } | null,
   autostart: false,
+  theme: "system" as Theme,
   dragging: false,
 });
 

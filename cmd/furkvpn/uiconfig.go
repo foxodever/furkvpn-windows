@@ -21,6 +21,8 @@ type uiConfig struct {
 	// The app has run before: autostart was set up then.
 	Initialized   bool `json:"initialized"`
 	TrayHintShown bool `json:"trayHintShown"`
+	// "dark" or "light"; empty follows Windows.
+	Theme string `json:"theme,omitempty"`
 	// The system proxy the app has set (sysproxy.go), and the user's own settings from before it.
 	ProxySet   string         `json:"proxySet,omitempty"`
 	ProxySaved *proxySettings `json:"proxySaved,omitempty"`
@@ -79,6 +81,17 @@ func (a *App) firstRun() {
 	}
 	_ = setAutostart(true)
 	a.updateUI(func(c *uiConfig) { c.Initialized = true })
+}
+
+// dark reports whether the window is dark: the user's choice, or else as in Windows.
+func (c uiConfig) dark() bool {
+	switch c.Theme {
+	case "dark":
+		return true
+	case "light":
+		return false
+	}
+	return systemUsesDarkTheme()
 }
 
 // systemUsesDarkTheme reads the apps' theme of Windows (Settings → Personalization → Colors).

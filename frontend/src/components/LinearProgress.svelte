@@ -5,7 +5,7 @@
 
 <div class="track" role="progressbar" aria-valuenow={value === null ? undefined : Math.round(value * 100)}>
   {#if value === null}
-    <div class="bar indeterminate"></div>
+    <div class="bar indeterminate endless"></div>
   {:else}
     <div class="bar" style="width: {Math.max(0, Math.min(1, value)) * 100}%"></div>
   {/if}

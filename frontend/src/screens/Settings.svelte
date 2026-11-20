@@ -11,9 +11,12 @@
   import { call, system } from "../lib/bridge";
   import { t, plural } from "../lib/i18n";
   import { relativeTime } from "../lib/format";
+  import { setTheme, type Theme } from "../lib/theme";
 
   let chooseInterval = $state(false);
   let confirmLogout = $state(false);
+  let chooseTheme = $state(false);
+  const themes: Theme[] = ["system", "dark", "light"];
   let tvCode = $state<string | null>(null);
   // What was typed off the TV's screen: 6 Latin letters and digits, spaces and dashes don't count,
   // and letters typed with the Russian layout on count as the Latin ones on the same keys.
@@ -44,6 +47,16 @@
       if (!r.available) snackbar(t("settings_up_to_date"));
     } catch {
       snackbar(t("error_download"));
+    }
+  }
+
+  async function pickTheme(theme: Theme) {
+    chooseTheme = false;
+    try {
+      await setTheme(theme);
+      ui.theme = theme;
+    } catch (e) {
+      snackbar(t("error_generic", e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -139,6 +152,7 @@
       </SettingsRow>
 
       <div class="section-title">{t("settings_interface")}</div>
+      <SettingsRow icon="dark_mode" title={t("settings_theme")} subtitle={t(`theme_${ui.theme}`)} onclick={() => (chooseTheme = true)} />
       <SettingsRow
         icon="swap_horiz"
         title={t("settings_servers_left")}
@@ -178,6 +192,20 @@
     </div>
   </div>
 </div>
+
+{#if chooseTheme}
+  <Dialog title={t("settings_theme")} onclose={() => (chooseTheme = false)}>
+    {#each themes as theme}
+      <button class="option interactive" onclick={() => pickTheme(theme)}>
+        <Radio checked={theme === ui.theme} />
+        <span class="body-large">{t(`theme_${theme}`)}</span>
+      </button>
+    {/each}
+    {#snippet actions()}
+      <button class="btn text interactive" onclick={() => (chooseTheme = false)}>{t("action_close")}</button>
+    {/snippet}
+  </Dialog>
+{/if}
 
 {#if chooseInterval}
   <Dialog title={t("settings_auto_update")} onclose={() => (chooseInterval = false)}>

@@ -213,6 +213,43 @@ func setAutostart(on bool) error {
 // Quit disconnects the VPN and closes the app.
 func (a *App) Quit() { a.quit() }
 
+// backgroundOf is the window's color before the interface draws itself (the interface's
+// --background).
+func backgroundOf(dark bool) (r, g, b uint8) {
+	if dark {
+		return 0x1A, 0x1C, 0x1E
+	}
+	return 0xF8, 0xF9, 0xFC
+}
+
+// Theme is the user's choice in Настройки → «Тёмная тема»: "system", "dark" or "light".
+func (a *App) Theme() string {
+	if theme := a.uiConfig().Theme; theme == "dark" || theme == "light" {
+		return theme
+	}
+	return "system"
+}
+
+// SetTheme remembers the choice and gives the window's title bar the same look; the interface
+// repaints itself.
+func (a *App) SetTheme(theme string) error {
+	switch theme {
+	case "dark":
+		runtime.WindowSetDarkTheme(a.ctx)
+	case "light":
+		runtime.WindowSetLightTheme(a.ctx)
+	case "system":
+		theme = ""
+		runtime.WindowSetSystemDefaultTheme(a.ctx)
+	default:
+		return ipc.Errorf("bad_request", "theme")
+	}
+	a.updateUI(func(c *uiConfig) { c.Theme = theme })
+	r, g, b := backgroundOf(a.uiConfig().dark())
+	runtime.WindowSetBackgroundColour(a.ctx, r, g, b, 255)
+	return nil
+}
+
 // Hide sends the window to the tray.
 func (a *App) Hide() { runtime.WindowHide(a.ctx) }
 

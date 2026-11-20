@@ -17,6 +17,8 @@ interface NativeApp {
   Autostart(): Promise<boolean>;
   SetAutostart(on: boolean): Promise<void>;
   Language(): Promise<string>;
+  Theme(): Promise<string>;
+  SetTheme(theme: string): Promise<void>;
   InstallUpdate(path: string): Promise<void>;
   Quit(): Promise<void>;
   Hide(): Promise<void>;
@@ -130,6 +132,8 @@ export const system = {
   autostart: sys("Autostart"),
   setAutostart: sys("SetAutostart"),
   language: sys("Language"),
+  theme: sys("Theme"),
+  setTheme: sys("SetTheme"),
   installUpdate: sys("InstallUpdate"),
   quit: sys("Quit"),
   hide: sys("Hide"),

@@ -3,9 +3,11 @@ import { mount } from "svelte";
 import App from "./App.svelte";
 import { system } from "./lib/bridge";
 import { setLanguage } from "./lib/i18n";
-import { start } from "./lib/state.svelte";
+import { start, ui } from "./lib/state.svelte";
+import { startTheme } from "./lib/theme";
 
 async function main() {
+  startTheme().then((theme) => (ui.theme = theme));
   try {
     setLanguage(await system.language());
   } catch {

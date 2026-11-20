@@ -4,7 +4,7 @@
   const r = $derived((size - stroke) / 2);
 </script>
 
-<svg class="spinner {cls}" width={size} height={size} viewBox="0 0 {size} {size}" role="progressbar">
+<svg class="spinner endless {cls}" width={size} height={size} viewBox="0 0 {size} {size}" role="progressbar">
   <circle cx={size / 2} cy={size / 2} {r} stroke-width={stroke} fill="none" />
 </svg>
 

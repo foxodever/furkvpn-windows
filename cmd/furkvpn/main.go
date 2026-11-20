@@ -35,10 +35,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	dark := systemUsesDarkTheme()
-	background := options.NewRGB(0xF8, 0xF9, 0xFC)
-	if dark {
-		background = options.NewRGB(0x1A, 0x1C, 0x1E)
+	background := options.NewRGB(backgroundOf(app.ui.dark()))
+	titleBar := windows.SystemDefault
+	switch app.ui.Theme {
+	case "dark":
+		titleBar = windows.Dark
+	case "light":
+		titleBar = windows.Light
 	}
 	ru := app.lang == "ru"
 	msg := func(r, e string) string {
@@ -77,7 +80,7 @@ func main() {
 			OnSecondInstanceLaunch: app.secondInstance,
 		},
 		Windows: &windows.Options{
-			Theme:               windows.SystemDefault,
+			Theme:               titleBar,
 			WebviewUserDataPath: filepath.Join(localAppData(), "FurkVPN", "WebView2"),
 			DisablePinchZoom:    true,
 			Messages: &windows.Messages{

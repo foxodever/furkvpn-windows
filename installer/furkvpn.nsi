@@ -101,9 +101,11 @@ Function un.onInit
   SetRegView 64
 FunctionEnd
 
-; The app's window may be open in any user's session; the installer replaces its file.
+; The app's window may be open in any user's session; the installer replaces its file. Only the
+; app itself is stopped, not what it has started: an update is started by the app, and stopping
+; "the app and its children" stopped this installer too, so the update never got installed.
 !macro StopApp
-  nsExec::Exec '"$SYSDIR\taskkill.exe" /F /IM FurkVPN.exe /T'
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /F /IM FurkVPN.exe'
   Pop $0
 !macroend
 
@@ -114,6 +116,10 @@ FunctionEnd
 
 Section "Install"
   SetShellVarContext all
+  ${If} $Update == "1"
+    ; The app closes by itself after starting the update and puts its things in order first.
+    Sleep 1500
+  ${EndIf}
   !insertmacro StopApp
   ; The old service holds its files; it is stopped, not removed, so the VPN's settings stay.
   ${If} ${FileExists} "$INSTDIR\FurkVPNService.exe"
