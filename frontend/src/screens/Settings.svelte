@@ -123,19 +123,19 @@
           <Switch checked={!!s?.whitelistDetect} onchange={(v) => setSetting("whitelistDetect", v)} />
         {/snippet}
       </SettingsRow>
-      <!-- Watching the white lists and changing servers because of them are separate choices. -->
-      {#if s?.whitelistDetect}
-        <SettingsRow
-          icon="swap_horiz"
-          title={t("settings_whitelist_switch")}
-          subtitle={t("settings_whitelist_switch_hint")}
-          onclick={() => setSetting("whitelistAutoSwitch", !s?.whitelistAutoSwitch)}
-        >
-          {#snippet trailing()}
-            <Switch checked={!!s?.whitelistAutoSwitch} onchange={(v) => setSetting("whitelistAutoSwitch", v)} />
-          {/snippet}
-        </SettingsRow>
-      {/if}
+      <!-- Changing servers because of the white lists is a choice of its own; it only means
+           something while they are watched. -->
+      <SettingsRow
+        icon="signal_cellular_alt"
+        title={t("settings_whitelist_switch")}
+        subtitle={t("settings_whitelist_switch_hint")}
+        disabled={!s?.whitelistDetect}
+        onclick={() => setSetting("whitelistAutoSwitch", !s?.whitelistAutoSwitch)}
+      >
+        {#snippet trailing()}
+          <Switch checked={!!s?.whitelistAutoSwitch} disabled={!s?.whitelistDetect} onchange={(v) => setSetting("whitelistAutoSwitch", v)} />
+        {/snippet}
+      </SettingsRow>
       <SettingsRow icon="speed" title={t("settings_ping_type")} subtitle={t(`ping_type_${s?.pingType ?? "proxy"}`)} onclick={() => (choosePing = true)} />
       <SettingsRow
         icon="wifi_tethering"
