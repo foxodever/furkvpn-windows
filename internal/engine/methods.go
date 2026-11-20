@@ -298,7 +298,7 @@ func (e *Engine) set(params json.RawMessage) error {
 	asInt := func() error { return json.Unmarshal(p.Value, &n) }
 	var change func(s *settings.Settings)
 	switch p.Key {
-	case "whitelistDetect", "connectionLog", "shareEnabled", "shareAuth", "serversOnLeft", "autoConnect",
+	case "whitelistDetect", "whitelistAutoSwitch", "connectionLog", "shareEnabled", "shareAuth", "serversOnLeft", "autoConnect",
 		"routingEnabled", "routingLanDirect", "routingRuDirect", "useRecommendedExclusions", "onlySelectedApps",
 		"tunEnabled", "tunIpv6", "tunStrictDns", "systemProxy":
 		if err := asBool(); err != nil {
@@ -308,6 +308,10 @@ func (e *Engine) set(params json.RawMessage) error {
 			switch p.Key {
 			case "whitelistDetect":
 				s.WhitelistDetect = b
+			case "whitelistAutoSwitch":
+				s.WhitelistAutoSwitch = b
+				// What was switched to before stays the user's server from now on.
+				s.WhitelistAutoSwitched = ""
 			case "connectionLog":
 				s.ConnectionLog = b
 			case "shareEnabled":
@@ -356,6 +360,17 @@ func (e *Engine) set(params json.RawMessage) error {
 			return ipc.Errorf("bad_request", "hours")
 		}
 		change = func(s *settings.Settings) { s.SubscriptionUpdateHours = n }
+	case "pingType":
+		var kind string
+		if err := json.Unmarshal(p.Value, &kind); err != nil || (kind != settings.PingViaProxy && kind != settings.PingTCP && kind != settings.PingICMP) {
+			return ipc.Errorf("bad_request", "ping type")
+		}
+		if _, err := e.settings.Update(func(s *settings.Settings) { s.PingType = kind }); err != nil {
+			return err
+		}
+		// Delays measured another way don't compare with the new ones.
+		e.clearPings()
+		return nil
 	default:
 		return ipc.Errorf("bad_request", "unknown setting "+p.Key)
 	}

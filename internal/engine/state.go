@@ -107,6 +107,8 @@ type settingsView struct {
 	ServersOnLeft           bool           `json:"serversOnLeft"`
 	SubscriptionUpdateHours int            `json:"subscriptionUpdateHours"`
 	WhitelistDetect         bool           `json:"whitelistDetect"`
+	WhitelistAutoSwitch     bool           `json:"whitelistAutoSwitch"`
+	PingType                string         `json:"pingType"`
 	ConnectionLog           bool           `json:"connectionLog"`
 	SkippedUpdate           int            `json:"skippedUpdate"`
 	AutoConnect             bool           `json:"autoConnect"`
@@ -157,6 +159,8 @@ func (e *Engine) slice(name string) any {
 			ServersOnLeft:           s.ServersOnLeft,
 			SubscriptionUpdateHours: s.SubscriptionUpdateHours,
 			WhitelistDetect:         s.WhitelistDetect,
+			WhitelistAutoSwitch:     s.WhitelistAutoSwitch,
+			PingType:                s.PingType,
 			ConnectionLog:           s.ConnectionLog,
 			SkippedUpdate:           s.SkippedUpdate,
 			AutoConnect:             s.AutoConnect,

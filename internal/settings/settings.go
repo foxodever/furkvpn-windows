@@ -118,6 +118,11 @@ type Settings struct {
 	Routing                 Routing `json:"routing"`
 	// Detect operator white lists and switch to bypass servers automatically.
 	WhitelistDetect bool `json:"whitelistDetect"`
+	// Switch to the bypass servers when white lists turn on (and back); off, they are only shown.
+	WhitelistAutoSwitch bool `json:"whitelistAutoSwitch"`
+	// How the ping button measures the servers: "proxy" (a request through the server), "tcp"
+	// or "icmp" (the server itself).
+	PingType string `json:"pingType"`
 	// Server the app switched to because of white lists, to know what may be switched back.
 	WhitelistAutoSwitched string `json:"whitelistAutoSwitched,omitempty"`
 	// Debug log of the programs' connections.
@@ -134,6 +139,13 @@ type Settings struct {
 }
 
 // Defaults of a fresh install.
+// Kinds of ping (Settings.PingType).
+const (
+	PingViaProxy = "proxy"
+	PingTCP      = "tcp"
+	PingICMP     = "icmp"
+)
+
 func Defaults() Settings {
 	return Settings{
 		ExcludedApps:             []string{},
@@ -144,6 +156,8 @@ func Defaults() Settings {
 		SubscriptionUpdateHours:  UpdateFromSubscription,
 		Routing:                  Routing{Enabled: true, LANDirect: true, Direct: []string{}, Proxy: []string{}, Block: []string{}},
 		WhitelistDetect:          true,
+		WhitelistAutoSwitch:      true,
+		PingType:                 PingViaProxy,
 		Tun:                      DefaultTun(),
 	}
 }
@@ -257,6 +271,9 @@ func clean(s Settings) Settings {
 	}
 	if s.SubscriptionUpdateHours < UpdateManual || s.SubscriptionUpdateHours > 48 {
 		s.SubscriptionUpdateHours = UpdateFromSubscription
+	}
+	if s.PingType != PingTCP && s.PingType != PingICMP {
+		s.PingType = PingViaProxy
 	}
 	if s.Tun.MTU < MinMTU || s.Tun.MTU > MaxMTU {
 		s.Tun.MTU = DefaultMTU

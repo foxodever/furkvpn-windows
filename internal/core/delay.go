@@ -29,6 +29,13 @@ import (
 // (balancers) through its own routing, the way the VPN would send the traffic. The test URL is
 // the config's own (its observatory's) when it has one, otherwise testURL.
 func MeasureDelay(configJSON []byte, testURL string, timeout time.Duration) (int64, error) {
+	return MeasureDelayBy(ViaProxy, configJSON, testURL, timeout)
+}
+
+// MeasureDelayBy measures the way the user chose. TCP and ICMP ping the server itself (the fastest
+// one of an auto-select config) and say nothing about whether the VPN works through it; where
+// they can't be used (TCP and a server on UDP) the delay is measured through the server after all.
+func MeasureDelayBy(method Method, configJSON []byte, testURL string, timeout time.Duration) (int64, error) {
 	cfg, err := jsonx.ParseObject(configJSON)
 	if err != nil {
 		return -1, fmt.Errorf("parse config: %w", err)
@@ -39,14 +46,21 @@ func MeasureDelay(configJSON []byte, testURL string, timeout time.Duration) (int
 	if len(indexes) == 0 {
 		return -1, errors.New("config has no proxy outbound")
 	}
-	if hasBalancers(cfg) {
-		// A server that cannot be resolved just fails its checks, as it would in the VPN.
-		pinServers(cfg, indexes)
-		return measureAuto(cfg, testURL, timeout)
+	auto := hasBalancers(cfg)
+	if !auto {
+		indexes = indexes[:1]
 	}
-	indexes = indexes[:1]
-	if err := pinServers(cfg, indexes); err != nil {
+	// A server of an auto-select that cannot be resolved just fails its checks, as in the VPN.
+	if err := pinServers(cfg, indexes); err != nil && !auto {
 		return -1, err
+	}
+	if method == TCP || method == ICMP {
+		if ms, err := measureDirect(endpoints(cfg, indexes), method, timeout); !errors.Is(err, errNotApplicable) {
+			return ms, err
+		}
+	}
+	if auto {
+		return measureAuto(cfg, testURL, timeout)
 	}
 	results, err := measureTags(delayTestConfig(cfg, false), tagOutbounds(cfg, indexes), testURL, timeout)
 	if err != nil {

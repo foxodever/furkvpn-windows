@@ -109,7 +109,8 @@ func (e *Engine) measure(key, testURL string) {
 	e.mu.Unlock()
 	result := Ping{State: "failed"}
 	if raw := e.subs.ConfigFor(key); raw != nil {
-		if ms, err := core.MeasureDelay(raw, testURL, pingTimeout); err == nil && ms >= 0 {
+		method := core.Method(e.settings.Get().PingType)
+		if ms, err := core.MeasureDelayBy(method, raw, testURL, pingTimeout); err == nil && ms >= 0 {
 			result = Ping{State: "ok", MS: ms}
 		}
 	}

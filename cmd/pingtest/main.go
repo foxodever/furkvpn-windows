@@ -16,6 +16,7 @@ import (
 func main() {
 	file := flag.String("sub", "", "Xray JSON subscription file (array of configs)")
 	url := flag.String("url", "https://www.gstatic.com/generate_204", "test URL")
+	kind := flag.String("type", "proxy", "proxy, tcp or icmp")
 	timeout := flag.Duration("timeout", 5*time.Second, "timeout")
 	flag.Parse()
 	raw, err := os.ReadFile(*file)
@@ -38,7 +39,7 @@ func main() {
 			var remarks struct{ Remarks string }
 			_ = json.Unmarshal(c, &remarks)
 			started := time.Now()
-			ms, err := core.MeasureDelay(c, *url, *timeout)
+			ms, err := core.MeasureDelayBy(core.Method(*kind), c, *url, *timeout)
 			results[i] = fmt.Sprintf("%-44s %6d ms  (took %v) %v", remarks.Remarks, ms, time.Since(started).Round(time.Millisecond), errOrEmpty(err))
 		}()
 	}

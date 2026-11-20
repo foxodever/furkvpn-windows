@@ -12,10 +12,13 @@
   import { t, plural } from "../lib/i18n";
   import { relativeTime } from "../lib/format";
   import { setTheme, type Theme } from "../lib/theme";
+  import type { PingType } from "../lib/types";
 
   let chooseInterval = $state(false);
   let confirmLogout = $state(false);
   let chooseTheme = $state(false);
+  let choosePing = $state(false);
+  const pingTypes: PingType[] = ["proxy", "tcp", "icmp"];
   const themes: Theme[] = ["system", "dark", "light"];
   let tvCode = $state<string | null>(null);
   // What was typed off the TV's screen: 6 Latin letters and digits, spaces and dashes don't count,
@@ -120,6 +123,20 @@
           <Switch checked={!!s?.whitelistDetect} onchange={(v) => setSetting("whitelistDetect", v)} />
         {/snippet}
       </SettingsRow>
+      <!-- Watching the white lists and changing servers because of them are separate choices. -->
+      {#if s?.whitelistDetect}
+        <SettingsRow
+          icon="swap_horiz"
+          title={t("settings_whitelist_switch")}
+          subtitle={t("settings_whitelist_switch_hint")}
+          onclick={() => setSetting("whitelistAutoSwitch", !s?.whitelistAutoSwitch)}
+        >
+          {#snippet trailing()}
+            <Switch checked={!!s?.whitelistAutoSwitch} onchange={(v) => setSetting("whitelistAutoSwitch", v)} />
+          {/snippet}
+        </SettingsRow>
+      {/if}
+      <SettingsRow icon="speed" title={t("settings_ping_type")} subtitle={t(`ping_type_${s?.pingType ?? "proxy"}`)} onclick={() => (choosePing = true)} />
       <SettingsRow
         icon="wifi_tethering"
         title={t("settings_share")}
@@ -203,6 +220,29 @@
     {/each}
     {#snippet actions()}
       <button class="btn text interactive" onclick={() => (chooseTheme = false)}>{t("action_close")}</button>
+    {/snippet}
+  </Dialog>
+{/if}
+
+{#if choosePing}
+  <Dialog title={t("settings_ping_type")} onclose={() => (choosePing = false)}>
+    {#each pingTypes as kind}
+      <button
+        class="option interactive"
+        onclick={() => {
+          setSetting("pingType", kind);
+          choosePing = false;
+        }}
+      >
+        <Radio checked={kind === (s?.pingType ?? "proxy")} />
+        <span class="col">
+          <span class="body-large">{t(`ping_type_${kind}`)}</span>
+          <span class="body-medium muted">{t(`ping_type_${kind}_hint`)}</span>
+        </span>
+      </button>
+    {/each}
+    {#snippet actions()}
+      <button class="btn text interactive" onclick={() => (choosePing = false)}>{t("action_close")}</button>
     {/snippet}
   </Dialog>
 {/if}

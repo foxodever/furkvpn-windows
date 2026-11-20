@@ -232,13 +232,17 @@ func probeError(err error) string {
 	return "other"
 }
 
-// autoSwitch moves to the LTE auto server when white lists turn on, and back when they are off.
+// autoSwitch moves to the LTE auto server when white lists turn on, and back when they are off,
+// unless the user has turned the switching off and only watches the white lists.
 func (e *Engine) autoSwitch(old, new whitelist.Status) {
 	info := e.subs.Info()
 	if info == nil {
 		return
 	}
 	s := e.settings.Get()
+	if !s.WhitelistAutoSwitch {
+		return
+	}
 	current := e.subs.Selected(s.SelectedServer)
 	if current == nil {
 		return

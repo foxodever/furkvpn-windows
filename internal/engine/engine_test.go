@@ -560,3 +560,57 @@ func TestKeyWithoutTheSettingsFetchesThem(t *testing.T) {
 	waitFor(t, "the settings", func() bool { return len(e.cfg().TelegramProxies) == 1 })
 	waitForAccount(t, e)
 }
+
+// White lists can be watched without the app changing servers: with the switching turned off the
+// chosen server stays, and the ping type chosen in the settings reaches the window.
+func TestWhitelistWithoutSwitchingAndPingType(t *testing.T) {
+	server := testServer(t)
+	e, _ := newEngine(t, server)
+	if _, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount(t, e)
+	e.mu.Lock()
+	e.config.Whitelist.LTEServer = []string{"Германия"}
+	e.mu.Unlock()
+	set := func(key string, value any) error {
+		params, _ := json.Marshal(map[string]any{"key": key, "value": value})
+		_, err := e.Handle(context.Background(), nil, "set", params)
+		return err
+	}
+	if s := e.settings.Get(); !s.WhitelistAutoSwitch || s.PingType != settings.PingViaProxy {
+		t.Fatalf("defaults: %+v", s)
+	}
+
+	if err := set("whitelistAutoSwitch", false); err != nil {
+		t.Fatal(err)
+	}
+	e.autoSwitch("all_ok", "whitelist")
+	if got := e.settings.Get().SelectedServer; got != "🇳🇱 Нидерланды#1" {
+		t.Fatalf("switched to %q with the switching off", got)
+	}
+	if !e.settings.Get().WhitelistDetect {
+		t.Fatal("the white lists are still watched")
+	}
+	if err := set("whitelistAutoSwitch", true); err != nil {
+		t.Fatal(err)
+	}
+	e.autoSwitch("all_ok", "whitelist")
+	if got := e.settings.Get().SelectedServer; got != "🇩🇪 Германия#1" {
+		t.Fatalf("selected %q with the switching on", got)
+	}
+
+	if err := set("pingType", "tcp"); err != nil {
+		t.Fatal(err)
+	}
+	if set("pingType", "udp") == nil {
+		t.Fatal("an unknown ping type is refused")
+	}
+	var view struct {
+		PingType            string
+		WhitelistAutoSwitch bool
+	}
+	if err := json.Unmarshal(e.fullState()["settings"], &view); err != nil || view.PingType != "tcp" || !view.WhitelistAutoSwitch {
+		t.Fatalf("%s %v", e.fullState()["settings"], err)
+	}
+}

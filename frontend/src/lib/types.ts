@@ -131,11 +131,15 @@ export interface TunSettings {
   systemProxy: boolean;
 }
 
+export type PingType = "proxy" | "tcp" | "icmp";
+
 export interface SettingsView {
   selectedServer: string;
   serversOnLeft: boolean;
   subscriptionUpdateHours: number;
   whitelistDetect: boolean;
+  whitelistAutoSwitch: boolean;
+  pingType: PingType;
   connectionLog: boolean;
   skippedUpdate: number;
   autoConnect: boolean;

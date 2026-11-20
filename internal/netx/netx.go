@@ -21,6 +21,8 @@ type State struct {
 	Kind  Kind   `json:"kind"`
 	Index int    `json:"index"`
 	Name  string `json:"name"`
+	// Its lasting addresses.
+	addresses []string
 }
 
 // LANAddress is an address of this computer that other devices can reach.

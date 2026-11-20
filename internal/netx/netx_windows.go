@@ -68,11 +68,13 @@ func Current() *State {
 	if best == nil {
 		return nil
 	}
+	addresses := addressesOf(best.luid)
 	return &State{
-		Key:   fmt.Sprintf("%d %s", best.luid, strings.Join(addressesOf(best.luid), ",")),
-		Kind:  kindOf(best.ifrow),
-		Index: int(best.index),
-		Name:  best.ifrow.Alias(),
+		Key:       fmt.Sprintf("%d %s", best.luid, strings.Join(addresses, ",")),
+		Kind:      kindOf(best.ifrow),
+		Index:     int(best.index),
+		Name:      best.ifrow.Alias(),
+		addresses: addresses,
 	}
 }
 
