@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -20,6 +21,9 @@ import (
 
 // runEngine runs the engine and the windows' pipe until ctx is done.
 func runEngine(ctx context.Context, dataDir string, logger *log.Logger, resolver resolverT, dev bool) error {
+	log.SetOutput(libraryLog{logger.Writer()})
+	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
+	log.SetPrefix("lib: ")
 	// A test API instead of furkapp.net (set in the service's Environment value in the registry).
 	if api := os.Getenv("FURKVPN_API"); api != "" {
 		engine.APIBase = strings.TrimRight(api, "/")
@@ -49,6 +53,20 @@ func runEngine(ctx context.Context, dataDir string, logger *log.Logger, resolver
 	setResumeHook(e.Resumed)
 	e.Run()
 	return nil
+}
+
+// libraryLog puts into the service log what libraries write to Go's default logger, which a
+// service has nowhere to show. Wintun's messages are there: why an adapter did not come up, as in
+// "Failed to setup adapter (problem code: 0x27, ntstatus: 0xC0000034)". Left out is its report, at
+// every start and worded as a failure, that no adapter was left from before.
+type libraryLog struct{ to io.Writer }
+
+func (l libraryLog) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("Failed to find matching adapter name")) {
+		return len(p), nil
+	}
+	_, err := l.to.Write(p)
+	return len(p), err
 }
 
 // rotatingLog keeps the service log small: one file of up to 1 MB plus the previous one.

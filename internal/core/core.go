@@ -104,6 +104,17 @@ func Start(configJSON []byte) error {
 // is how Xray's TUN ends when the adapter has no interface of an IP version it was told to set up.
 func NoInterface(err error) bool { return errors.Is(err, syscall.Errno(1168)) }
 
+// AdapterFailed tells that Start failed because the VPN adapter did not come up: Xray's inbound
+// manager wraps what its TUN returned in "failed to start proxy", and making the adapter, unlike
+// setting it up ("unable to set routes" and the like), ends with a bare Windows error under it.
+func AdapterFailed(err error) bool {
+	var errno syscall.Errno
+	if err == nil || !errors.As(err, &errno) {
+		return false
+	}
+	return strings.HasSuffix(err.Error(), "failed to start proxy > "+errno.Error())
+}
+
 // Stop shuts the VPN instance down; the TUN adapter, its routes and filters go with it.
 func Stop() error {
 	mu.Lock()

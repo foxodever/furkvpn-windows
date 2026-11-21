@@ -78,16 +78,18 @@ export function back() {
 let snackbarId = 0;
 let snackbarTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** Shown for 4 seconds, and a long text for as long as it takes to read, up to 12. */
 export function snackbar(text: string) {
   ui.snackbar = { text, id: ++snackbarId };
   clearTimeout(snackbarTimer);
-  snackbarTimer = setTimeout(() => (ui.snackbar = null), 4000);
+  snackbarTimer = setTimeout(() => (ui.snackbar = null), Math.min(12000, Math.max(4000, text.length * 60)));
 }
 
 const messageTexts: Record<string, StringKey> = {
   whitelist_switched_on: "whitelist_switched_on",
   whitelist_switched_off: "whitelist_switched_off",
   vpn_error: "vpn_error",
+  vpn_adapter_error: "vpn_adapter_error",
 };
 
 /** The settings from furkapp.net over the built-in ones: a field that came as null keeps its default. */

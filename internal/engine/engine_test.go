@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"furkvpn/internal/core"
+	"furkvpn/internal/ipc"
 	"furkvpn/internal/settings"
 	"furkvpn/internal/version"
 )
@@ -511,6 +513,81 @@ func TestAdapterFailureIsNotBlamedOnIPv6(t *testing.T) {
 	}
 	if starts.Load() != 2 || e.noTunIPv6.Load() || !e.wanted().tun.IPv6 {
 		t.Fatalf("%d starts, without IPv6 from now on: %v", starts.Load(), e.noTunIPv6.Load())
+	}
+}
+
+// Windows lists the adapter's driver as installed while the driver's file is gone: every start ends
+// with "The system cannot find the file specified" until the driver is installed anew, which the
+// service does by itself. What the new driver doesn't cure, the window is told as the adapter's
+// failure, with Windows' own words.
+func TestAdapterThatDoesNotComeUpGetsItsDriverAnew(t *testing.T) {
+	oldHas, oldStart, oldDriver := hasIPv6, startCore, reinstallDriver
+	t.Cleanup(func() { hasIPv6, startCore, reinstallDriver = oldHas, oldStart, oldDriver })
+	hasIPv6 = func() bool { return true }
+	lost := fmt.Errorf("start xray: %w", fmt.Errorf("app/proxyman/inbound: failed to start proxy > %w", syscall.Errno(2)))
+
+	var mu sync.Mutex
+	broken, hopeless := true, false
+	starts, installs := 0, 0
+	startCore = func([]byte) error {
+		mu.Lock()
+		defer mu.Unlock()
+		starts++
+		if broken || hopeless {
+			return lost
+		}
+		return nil
+	}
+	reinstallDriver = func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		installs++
+		broken = false
+		return nil
+	}
+	counted := func() (int, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		s, i := starts, installs
+		starts, installs = 0, 0
+		return s, i
+	}
+
+	server := testServer(t)
+	e, _ := newEngine(t, server, func(e *Engine) { e.opt.DevProxyOnly = false })
+	if _, err := e.SubmitKey(server.URL + "/abcDEF123456"); err != nil {
+		t.Fatal(err)
+	}
+	waitForAccount(t, e)
+
+	if err := e.Connect(); err != nil || !e.connected() {
+		t.Fatalf("not connected: %v", err)
+	}
+	if s, i := counted(); s != 2 || i != 1 {
+		t.Fatalf("%d starts, the driver installed %d times", s, i)
+	}
+	e.Disconnect()
+
+	// The driver is fine now: nothing is installed.
+	if err := e.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if s, i := counted(); s != 1 || i != 0 {
+		t.Fatalf("%d starts, the driver installed %d times", s, i)
+	}
+	e.Disconnect()
+
+	// The new driver did not help: one more try, and the error names the adapter.
+	mu.Lock()
+	hopeless = true
+	mu.Unlock()
+	err := e.Connect()
+	var failure *ipc.Error
+	if !errors.As(err, &failure) || failure.Code != "adapter" || failure.Message != syscall.Errno(2).Error() || e.connected() {
+		t.Fatalf("connected, or the error is not the adapter's: %v", err)
+	}
+	if s, i := counted(); s != 2 || i != 1 {
+		t.Fatalf("%d starts, the driver installed %d times", s, i)
 	}
 }
 

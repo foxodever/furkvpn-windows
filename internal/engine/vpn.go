@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"furkvpn/internal/core"
@@ -66,8 +67,9 @@ func (a applied) equal(b applied) bool {
 
 // Replaced in tests.
 var (
-	hasIPv6   = netx.HasIPv6
-	startCore = core.Start
+	hasIPv6         = netx.HasIPv6
+	startCore       = core.Start
+	reinstallDriver = core.ReinstallAdapterDriver
 )
 
 // autoBest is the server auto-select found best a moment ago, to start the next core with it as
@@ -160,7 +162,12 @@ func (e *Engine) startLocked(reconnect bool) error {
 
 	fail := func(err error) error {
 		e.log.Printf("VPN start failed: %v", err)
-		e.message("vpn_error", errText(err))
+		var ie *ipc.Error
+		if errors.As(err, &ie) && ie.Code == "adapter" {
+			e.message("vpn_adapter_error", ie.Message)
+		} else {
+			e.message("vpn_error", errText(err))
+		}
 		e.stopLocked(false)
 		return err
 	}
@@ -242,7 +249,23 @@ func (e *Engine) startLocked(reconnect bool) error {
 			e.noTunIPv6.Store(false) // not IPv6's fault then
 		}
 	}
+	if err != nil && tun != nil && core.AdapterFailed(err) {
+		// Windows did not bring the adapter up. A driver it lists as installed while the driver's
+		// file is gone (another VPN's uninstaller, an antivirus) fails so every time, with "The
+		// system cannot find the file specified", until the driver is installed anew.
+		e.log.Printf("the adapter did not come up (%v), installing its driver anew", err)
+		if derr := reinstallDriver(); derr != nil {
+			e.log.Printf("the adapter's driver stays as it was: %v", derr)
+		}
+		err = startCore(config)
+	}
 	if err != nil {
+		if tun != nil && core.AdapterFailed(err) {
+			var errno syscall.Errno
+			errors.As(err, &errno)
+			e.log.Printf("the adapter did not come up: %v", err)
+			return fail(ipc.Errorf("adapter", errno.Error()))
+		}
 		return fail(ipc.Errorf("core", err.Error()))
 	}
 	if share != nil {
