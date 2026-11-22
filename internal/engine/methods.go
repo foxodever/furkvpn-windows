@@ -74,6 +74,18 @@ func (e *Engine) Handle(ctx context.Context, c *ipc.Conn, method string, params 
 			return nil, err
 		}
 		return nil, e.SendTVKey(p.Code)
+	case "tvSession":
+		return e.NewTVSession(ctx)
+	case "tvWait":
+		p, err := decode[struct{ Code, Token string }](params)
+		if err != nil {
+			return nil, err
+		}
+		key, err := e.WaitTVKey(ctx, p.Code, p.Token)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"key": key}, nil
 	case "importKey":
 		p, err := decode[struct{ URL string }](params)
 		if err != nil {

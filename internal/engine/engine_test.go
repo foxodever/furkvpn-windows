@@ -361,6 +361,77 @@ func TestSendKeyToTV(t *testing.T) {
 	}
 }
 
+// The computer shows a code like a TV does, and the key a phone sends for it signs it in.
+func TestSignInFromAPhone(t *testing.T) {
+	var mu sync.Mutex
+	sent, sessions := "", 0
+	server := testServer(t)
+	mux := server.Config.Handler.(*http.ServeMux)
+	mux.HandleFunc("/api/v1/tv/session", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if sessions++; sessions > 2 {
+			http.Error(w, `{"error":"rate_limited"}`, 429)
+			return
+		}
+		if sessions == 2 { // an answer without the link: the computer makes it itself
+			fmt.Fprint(w, `{"code":"xyz789","token":"secret","expiresIn":0}`)
+			return
+		}
+		fmt.Fprint(w, `{"code":"ABC123","token":"secret","expiresIn":900,"url":"https://furkapp.net/tv/ABC123"}`)
+	})
+	mux.HandleFunc("/api/v1/tv/wait", func(w http.ResponseWriter, r *http.Request) {
+		var asked map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&asked)
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case asked["code"] != "ABC123" || asked["token"] != "secret":
+			http.Error(w, `{"error":"expired"}`, 404)
+		case sent == "":
+			fmt.Fprint(w, `{"status":"waiting"}`)
+		default:
+			fmt.Fprintf(w, `{"status":"ready","key":%q}`, sent)
+		}
+	})
+	e, _ := newEngine(t, server)
+	ctx := context.Background()
+
+	session, err := e.NewTVSession(ctx)
+	if err != nil || session.Code != "ABC123" || session.URL != "https://furkapp.net/tv/ABC123" || session.ExpiresIn != 900 {
+		t.Fatalf("%+v %v", session, err)
+	}
+	if key, err := e.WaitTVKey(ctx, session.Code, session.Token); err != nil || key != "" {
+		t.Fatalf("before the phone: %q %v", key, err)
+	}
+	if _, err := e.WaitTVKey(ctx, session.Code, "guess"); err == nil || !strings.Contains(err.Error(), "tv_expired") {
+		t.Fatalf("someone else's token: %v", err)
+	}
+	mu.Lock()
+	sent = server.URL + "/abcDEF123456"
+	mu.Unlock()
+	key, err := e.WaitTVKey(ctx, session.Code, session.Token)
+	if err != nil || key != sent {
+		t.Fatalf("after the phone: %q %v", key, err)
+	}
+	if r, err := e.SubmitKey(key); err != nil || r.Result != "imported" {
+		t.Fatalf("%+v %v", r, err)
+	}
+	waitForAccount(t, e)
+
+	if session, err = e.NewTVSession(ctx); err != nil || session.Code != "XYZ789" || session.URL != server.URL+"/tv/XYZ789" || session.ExpiresIn != 900 {
+		t.Fatalf("%+v %v", session, err)
+	}
+	if _, err := e.NewTVSession(ctx); err == nil || !strings.Contains(err.Error(), "tv_too_many") {
+		t.Fatalf("too many codes: %v", err)
+	}
+	gone, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := e.WaitTVKey(gone, "ABC123", "secret"); err == nil || !strings.Contains(err.Error(), "tv_failed") {
+		t.Fatalf("the window went away: %v", err)
+	}
+}
+
 // The settings hadn't come yet, or came before the key's domain was added to them: the key fetches
 // them again instead of being called foreign, but not more often than once a minute.
 func TestKeyOnANewDomainFetchesTheSettingsAgain(t *testing.T) {

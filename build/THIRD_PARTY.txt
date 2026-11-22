@@ -6,6 +6,7 @@ FurkVPN for Windows includes:
 - gVisor, golang.org/x/* and other Go modules — their own licenses (BSD, Apache 2.0, MIT).
 - Svelte (https://svelte.dev) — MIT License.
 - Material Symbols (https://fonts.google.com/icons) — Apache License 2.0.
+- qrcode-generator (https://github.com/kazuhikoarase/qrcode-generator) by Kazuhiko Arase — MIT License.
 - Twemoji Country Flags (https://github.com/talkjs/country-flag-emoji-polyfill): code MIT,
   flag images from Twemoji by Twitter, Inc. and contributors — CC BY 4.0.
 - Google Sans — the font of the FurkVPN Android app.

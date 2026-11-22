@@ -1,16 +1,19 @@
 <script lang="ts">
-  // Welcome screen (and "Сменить ключ"): sign in with Telegram or the website, paste or type the key.
+  // Welcome screen (and "Сменить ключ"): sign in with Telegram, the website or a phone (its QR
+  // code), paste or type the key.
   import Icon from "../components/Icon.svelte";
   import Logo from "../components/Logo.svelte";
   import TelegramIcon from "../components/TelegramIcon.svelte";
   import Dialog from "../components/Dialog.svelte";
   import TopBar from "../components/TopBar.svelte";
+  import PhoneSignIn from "../components/PhoneSignIn.svelte";
   import { app, pasteKey, submitKey } from "../lib/state.svelte";
   import { system } from "../lib/bridge";
   import { t } from "../lib/i18n";
 
   let { canGoBack = false }: { canGoBack?: boolean } = $props();
   let showManual = $state(false);
+  let showQr = $state(false);
   let manual = $state("");
 
   // The account page on the site: its "Войти в приложение FurkVPN" button adds the key here.
@@ -22,9 +25,10 @@
     <TopBar title="" />
   {/if}
   <div class="scroll">
-    <div class="wrap">
+    <!-- Under the top bar of "Сменить ключ" the logo is smaller, so the buttons fit without scrolling. -->
+    <div class="wrap" class:compact={canGoBack}>
       <div class="hero">
-        <Logo width={130} height={120} />
+        <Logo width={canGoBack ? 104 : 130} height={canGoBack ? 96 : 120} />
         <div class="headline-medium title">{t("onboarding_title")}</div>
         <div class="body-large muted">{t("onboarding_subtitle")}</div>
       </div>
@@ -42,11 +46,25 @@
           <Icon name="content_paste" />
           {t("onboarding_paste")}
         </button>
+        <button class="btn tonal large wide interactive" onclick={() => (showQr = true)}>
+          <Icon name="qr_code_2" />
+          {t("onboarding_qr")}
+        </button>
         <button class="btn text interactive" onclick={() => (showManual = true)}>{t("onboarding_manual")}</button>
       </div>
     </div>
   </div>
 </div>
+
+{#if showQr}
+  <PhoneSignIn
+    onclose={() => (showQr = false)}
+    onkey={(key) => {
+      showQr = false;
+      submitKey(key);
+    }}
+  />
+{/if}
 
 {#if showManual}
   <Dialog title={t("manual_title")} onclose={() => (showManual = false)}>
@@ -99,6 +117,15 @@
   .title {
     margin: 36px 0 8px;
     font-weight: 600;
+  }
+  .compact {
+    padding-top: 0;
+  }
+  .compact .hero {
+    padding: 0 0 20px;
+  }
+  .compact .title {
+    margin-top: 20px;
   }
   .buttons {
     display: flex;

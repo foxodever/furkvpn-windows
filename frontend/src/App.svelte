@@ -52,31 +52,45 @@
     }
   }
 
-  // Settings files dropped onto the window.
-  function drop(e: DragEvent) {
+  // Settings files dropped onto the window. The frame shows while a file is held over the window
+  // and goes when the file leaves it or is dropped. A drag can also end without a word to the page
+  // (and it is not told of a file leaving when the window is covered or hidden meanwhile), so the
+  // frame also goes by itself once "dragover", which comes for as long as the file is there, stops.
+  let dragWatch: ReturnType<typeof setTimeout> | undefined;
+
+  function dragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes("Files")) return;
     e.preventDefault();
+    ui.dragging = true;
+    clearTimeout(dragWatch);
+    dragWatch = setTimeout(dragOut, 1500);
+  }
+
+  function dragOut() {
+    clearTimeout(dragWatch);
     ui.dragging = false;
+  }
+
+  function dragLeave(e: DragEvent) {
+    // From one part of the window to another this comes too: relatedTarget is where the file
+    // went, and nothing when it left the window.
+    if (!(e.relatedTarget instanceof Node)) dragOut();
+  }
+
+  function drop(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+    dragOut();
     const file = e.dataTransfer?.files?.[0];
     if (!file || file.size > 5 * 1024 * 1024) return;
     file.text().then(inspectSettingsFile).catch(() => {});
   }
 </script>
 
-<svelte:window onkeydown={keydown} onmouseup={mouseup} />
+<!-- The whole window takes the file, an open dialog included. -->
+<svelte:window onkeydown={keydown} onmouseup={mouseup} ondragover={dragOver} ondragleave={dragLeave} ondrop={drop} />
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<main
-  ondragover={(e) => {
-    if (e.dataTransfer?.types.includes("Files")) {
-      e.preventDefault();
-      ui.dragging = true;
-    }
-  }}
-  ondragleave={(e) => {
-    if (e.target === e.currentTarget) ui.dragging = false;
-  }}
-  ondrop={drop}
->
+<main>
   <!-- A screen that fails to draw shows a way out instead of freezing the whole window. -->
   <svelte:boundary onerror={(error) => console.error("screen:", error)}>
     {#if !app.loaded}
